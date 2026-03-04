@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auto Invest - 포트폴리오</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            line-height: 1.6;
+        }
+
+        /* 헤더 */
+        header {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 { font-size: 20px; font-weight: 600; }
+
+        /* 네비게이션 */
+        .nav {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+        .nav a {
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .nav a:hover { background: #21262d; color: #e1e4e8; }
+        .nav a.active {
+            background: #1f6feb;
+            color: #fff;
+        }
+
+        /* 레이아웃 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        /* 카드 */
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .card h2 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            color: #c9d1d9;
+        }
+
+        /* 테이블 */
+        .port-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .port-table thead { background: #0d1117; }
+        .port-table th {
+            padding: 10px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid #30363d;
+        }
+        .port-table td {
+            padding: 12px;
+            border-bottom: 1px solid #21262d;
+        }
+        .port-table tr:hover { background: #1c2028; }
+
+        /* 등락 색상 */
+        .up { color: #f85149; }
+        .down { color: #58a6ff; }
+        .flat { color: #8b949e; }
+
+        /* TP/SL 하이라이트 */
+        .tp-hit { background: rgba(63, 185, 80, 0.15); }
+        .sl-hit { background: rgba(248, 81, 73, 0.15); }
+
+        .tp-badge, .sl-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .tp-badge { background: #23863633; color: #3fb950; }
+        .sl-badge { background: #f8514933; color: #f85149; }
+
+        /* 매도 버튼 */
+        .sell-btn {
+            background: #da3633;
+            color: #fff;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .sell-btn:hover { background: #f85149; }
+
+        /* 새로고침 버튼 */
+        .refresh-btn {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .refresh-btn:hover:not(:disabled) { background: #2ea043; }
+        .refresh-btn:disabled {
+            background: #30363d;
+            color: #484f58;
+            cursor: not-allowed;
+        }
+
+        /* 빈 상태 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #484f58;
+        }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+
+        /* 푸터 */
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #484f58;
+        }
+
+        /* 숫자 오른쪽 정렬 */
+        .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+        /* TP/SL 수정 관련 */
+        .tp-sl-group { display: inline-flex; align-items: center; gap: 4px; }
+        .tp-badge, .sl-badge { cursor: pointer; }
+        .tp-badge:hover, .sl-badge:hover { opacity: 0.8; }
+        .del-pos-btn {
+            background: none;
+            border: none;
+            color: #484f58;
+            font-size: 14px;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+        }
+        .del-pos-btn:hover { color: #f85149; }
+
+        /* 모달 */
+        .modal-overlay {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 24px;
+            width: 360px;
+            max-width: 90vw;
+        }
+        .modal h3 { font-size: 16px; margin-bottom: 16px; }
+        .modal label { display: block; font-size: 13px; color: #8b949e; margin-bottom: 4px; }
+        .modal input[type="number"] {
+            width: 100%;
+            padding: 8px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #e1e4e8;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+        .modal-actions button {
+            padding: 8px 16px;
+            border-radius: 6px;
+            border: none;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .btn-cancel { background: #21262d; color: #c9d1d9; }
+        .btn-cancel:hover { background: #30363d; }
+        .btn-save { background: #238636; color: #fff; }
+        .btn-save:hover { background: #2ea043; }
+        /* 테이블 가로 스크롤 래퍼 */
+        .table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* ── 반응형 ── */
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 12px 16px;
+            }
+            header > div:last-child { width: 100%; text-align: left; }
+            .container { padding: 12px; }
+            .card { padding: 14px; }
+            .card h2 { font-size: 14px; }
+            .port-table th, .port-table td { padding: 8px 6px; font-size: 13px; }
+            .sell-btn { padding: 5px 10px; font-size: 12px; }
+        }
+
+        @media (max-width: 480px) {
+            header h1 { font-size: 17px; }
+            .port-table th, .port-table td { padding: 6px 4px; font-size: 12px; }
+            .tp-badge, .sl-badge { font-size: 11px; padding: 2px 6px; }
+            .sell-btn { padding: 4px 8px; font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>Auto Invest</h1>
+            <nav class="nav">
+                <a href="/">추천</a>
+                <a href="/portfolio" class="active">포트폴리오</a>
+            </nav>
+        </div>
+        <div style="text-align:right;">
+            <button id="refresh-btn" class="refresh-btn" onclick="refreshPortfolio()">새로고침</button>
+            <div id="refresh-time" style="font-size:11px; color:#8b949e; margin-top:4px;"></div>
+        </div>
+    </header>
+
+    <div class="container">
+        {% if error %}
+        <div style="background:#f8514922; border:1px solid #f85149; border-radius:8px;
+                    padding:16px 20px; margin-bottom:20px; color:#f85149; font-size:14px;">
+            API 오류: {{ error }}
+        </div>
+        {% endif %}
+        <div class="card">
+            <h2>보유 종목</h2>
+            {% if portfolio %}
+            <div class="table-wrap">
+            <table class="port-table">
+                <thead>
+                    <tr>
+                        <th>종목코드</th>
+                        <th>종목명</th>
+                        <th style="text-align:right">보유수량</th>
+                        <th style="text-align:right">평균단가</th>
+                        <th style="text-align:right">현재가</th>
+                        <th style="text-align:right">손익금액</th>
+                        <th style="text-align:right">수익률</th>
+                        <th>TP / SL</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in portfolio %}
+                    <tr class="{% if item.tp_reached %}tp-hit{% elif item.sl_reached %}sl-hit{% endif %}">
+                        <td style="color:#8b949e">{{ item.stock_code }}</td>
+                        <td style="font-weight:600">{{ item.stock_name }}</td>
+                        <td class="num">{{ "{:,}".format(item.quantity) }}</td>
+                        <td class="num">{{ "{:,}".format(item.avg_price) }}</td>
+                        <td class="num">{{ "{:,}".format(item.current_price) }}</td>
+                        <td class="num {% if item.profit_amount > 0 %}up{% elif item.profit_amount < 0 %}down{% else %}flat{% endif %}">
+                            {{ "{:+,}".format(item.profit_amount) }}
+                        </td>
+                        <td class="num {% if item.profit_rate > 0 %}up{% elif item.profit_rate < 0 %}down{% else %}flat{% endif %}">
+                            {{ "%+.2f"|format(item.profit_rate) }}%
+                        </td>
+                        <td>
+                            {% if item.tp_pct is not none %}
+                            <span class="tp-sl-group">
+                                <span class="tp-badge" onclick="openEditModal('{{ item.stock_code }}', '{{ item.stock_name }}', {{ item.tp_pct }}, {{ item.sl_pct }})">+{{ item.tp_pct }}%</span>
+                                <span class="sl-badge" onclick="openEditModal('{{ item.stock_code }}', '{{ item.stock_name }}', {{ item.tp_pct }}, {{ item.sl_pct }})">{{ item.sl_pct }}%</span>
+                                <button class="del-pos-btn" title="포지션 기록 삭제" onclick="handleDeletePosition('{{ item.stock_code }}', '{{ item.stock_name }}')">&times;</button>
+                            </span>
+                            {% else %}
+                            <button class="tp-badge" style="cursor:pointer; border:1px dashed #3fb950; background:transparent;"
+                                    onclick="openCreateModal('{{ item.stock_code }}', '{{ item.stock_name }}')">+ 설정</button>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button class="sell-btn"
+                                    onclick="handleSell('{{ item.stock_code }}', '{{ item.stock_name }}', {{ item.quantity }})">
+                                매도
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="icon">📭</div>
+                <p>보유 종목이 없습니다</p>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if pre_market_reservations %}
+        <div class="card" style="margin-top: 20px;">
+            <h2>매수 예약 대기</h2>
+            <div class="table-wrap">
+            <table class="port-table">
+                <thead>
+                    <tr>
+                        <th>타입</th>
+                        <th>종목코드</th>
+                        <th>종목명</th>
+                        <th style="text-align:right">수량</th>
+                        <th style="text-align:right">익절 (%)</th>
+                        <th style="text-align:right">손절 (%)</th>
+                        <th>예약일시</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for res in pre_market_reservations %}
+                    <tr>
+                        <td>
+                            {% if res.reservation_type == 'market_open' %}
+                            <span style="background:#23863633; color:#3fb950; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">09:00</span>
+                            {% else %}
+                            <span style="background:#1f6feb33; color:#58a6ff; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600;">08:30</span>
+                            {% endif %}
+                        </td>
+                        <td style="color:#8b949e">{{ res.stock_code }}</td>
+                        <td style="font-weight:600">{{ res.stock_name }}</td>
+                        <td class="num">{{ "{:,}".format(res.quantity) }}</td>
+                        <td class="num"><span class="tp-badge">+{{ res.tp_pct }}%</span></td>
+                        <td class="num"><span class="sl-badge">{{ res.sl_pct }}%</span></td>
+                        <td style="color:#8b949e; font-size:12px;">{{ res.created_at[:19] if res.created_at else '-' }}</td>
+                        <td>
+                            <button class="sell-btn" style="background:#6e7681;"
+                                    onclick="handleCancelReservation({{ res.id }}, '{{ res.stock_name }}')">
+                                취소
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if orphan_positions %}
+        <div class="card" style="margin-top: 20px;">
+            <h2>예약된 TP/SL (보유하지 않은 종목)</h2>
+            <div class="table-wrap">
+            <table class="port-table">
+                <thead>
+                    <tr>
+                        <th>종목코드</th>
+                        <th>종목명</th>
+                        <th style="text-align:right">익절 (%)</th>
+                        <th style="text-align:right">손절 (%)</th>
+                        <th>등록일시</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pos in orphan_positions %}
+                    <tr>
+                        <td style="color:#8b949e">{{ pos.stock_code }}</td>
+                        <td style="font-weight:600">{{ pos.stock_name }}</td>
+                        <td class="num"><span class="tp-badge">+{{ pos.take_profit_pct }}%</span></td>
+                        <td class="num"><span class="sl-badge">{{ pos.stop_loss_pct }}%</span></td>
+                        <td style="color:#8b949e; font-size:12px;">{{ pos.bought_at[:19] if pos.bought_at else '-' }}</td>
+                        <td>
+                            <button class="sell-btn" style="background:#6e7681;"
+                                    onclick="handleDeletePosition('{{ pos.stock_code }}', '{{ pos.stock_name }}')">
+                                삭제
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- TP/SL 수정/등록 모달 -->
+    <div id="edit-modal" class="modal-overlay" onclick="if(event.target===this)closeEditModal()">
+        <div class="modal">
+            <h3 id="edit-modal-title">TP/SL 수정</h3>
+            <input type="hidden" id="edit-stock-code">
+            <input type="hidden" id="edit-stock-name">
+            <input type="hidden" id="edit-mode">
+            <label for="edit-tp">익절 (%)</label>
+            <input type="number" id="edit-tp" step="0.1">
+            <label for="edit-sl">손절 (%)</label>
+            <input type="number" id="edit-sl" step="0.1">
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeEditModal()">취소</button>
+                <button class="btn-save" onclick="savePosition()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        Auto Invest &copy; 2026 | 한국투자증권 Open API
+    </footer>
+
+    <script>
+    function _formatNow() {
+        var now = new Date();
+        return now.getFullYear() + '-'
+            + String(now.getMonth()+1).padStart(2,'0') + '-'
+            + String(now.getDate()).padStart(2,'0') + ' '
+            + String(now.getHours()).padStart(2,'0') + ':'
+            + String(now.getMinutes()).padStart(2,'0') + ':'
+            + String(now.getSeconds()).padStart(2,'0');
+    }
+
+    function refreshPortfolio() {
+        var btn = document.getElementById('refresh-btn');
+        btn.disabled = true;
+        btn.textContent = '갱신 중...';
+        sessionStorage.setItem('portfolio_refreshed', '1');
+        location.reload();
+    }
+
+    // 새로고침 버튼으로 리로드된 경우에만 시간 표시
+    (function() {
+        if (sessionStorage.getItem('portfolio_refreshed') === '1') {
+            sessionStorage.removeItem('portfolio_refreshed');
+            document.getElementById('refresh-time').textContent = _formatNow();
+        }
+    })();
+
+    function openEditModal(code, name, tp, sl) {
+        document.getElementById('edit-modal-title').textContent = name + ' TP/SL 수정';
+        document.getElementById('edit-stock-code').value = code;
+        document.getElementById('edit-stock-name').value = name;
+        document.getElementById('edit-mode').value = 'edit';
+        document.getElementById('edit-tp').value = tp;
+        document.getElementById('edit-sl').value = sl;
+        document.getElementById('edit-modal').classList.add('active');
+    }
+
+    function openCreateModal(code, name) {
+        document.getElementById('edit-modal-title').textContent = name + ' TP/SL 설정';
+        document.getElementById('edit-stock-code').value = code;
+        document.getElementById('edit-stock-name').value = name;
+        document.getElementById('edit-mode').value = 'create';
+        document.getElementById('edit-tp').value = 4.0;
+        document.getElementById('edit-sl').value = -3.0;
+        document.getElementById('edit-modal').classList.add('active');
+    }
+
+    function closeEditModal() {
+        document.getElementById('edit-modal').classList.remove('active');
+    }
+
+    function savePosition() {
+        var code = document.getElementById('edit-stock-code').value;
+        var name = document.getElementById('edit-stock-name').value;
+        var mode = document.getElementById('edit-mode').value;
+        var tp = parseFloat(document.getElementById('edit-tp').value);
+        var sl = parseFloat(document.getElementById('edit-sl').value);
+
+        var url = '/api/position';
+        var method = mode === 'create' ? 'POST' : 'PUT';
+        var body = mode === 'create'
+            ? {stock_code: code, stock_name: name, tp_pct: tp, sl_pct: sl}
+            : {stock_code: code, tp_pct: tp, sl_pct: sl};
+
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('저장 실패: ' + data.message);
+            }
+        })
+        .catch(function(err) { alert('요청 오류: ' + err); });
+    }
+
+    function handleDeletePosition(code, name) {
+        if (!confirm(name + ' (' + code + ') 포지션 기록을 삭제하시겠습니까?\n(매도되지 않으며 기록만 삭제됩니다)')) return;
+
+        fetch('/api/position/' + code, { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('삭제 실패: ' + data.message);
+            }
+        })
+        .catch(function(err) { alert('요청 오류: ' + err); });
+    }
+
+    function handleCancelReservation(id, name) {
+        if (!confirm(name + ' 예약을 취소하시겠습니까?')) return;
+
+        fetch('/api/pre-market-reservation/' + id, { method: 'DELETE' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('취소 실패: ' + data.message);
+            }
+        })
+        .catch(function(err) { alert('요청 오류: ' + err); });
+    }
+
+    function handleSell(code, name, qty) {
+        if (!confirm(name + ' (' + code + ') ' + qty + '주를 전량 매도하시겠습니까?')) return;
+
+        fetch('/api/sell', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({stock_code: code, quantity: qty})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                alert('매도 주문 완료: ' + name);
+                location.reload();
+            } else {
+                alert('매도 실패: ' + data.message);
+            }
+        })
+        .catch(function(err) { alert('요청 오류: ' + err); });
+    }
+    </script>
+</body>
+</html>
