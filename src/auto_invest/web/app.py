@@ -175,7 +175,7 @@ def _build_context(report: RecommendationReport) -> dict:
         return datetime.fromtimestamp(ts, tz=kst).strftime("%Y-%m-%d %H:%M:%S KST")
 
     cache_info = {
-        "recommendation": {"time": _fmt_ts(report.cached_at), "ttl": "1시간"},
+        "recommendation": {"time": _fmt_ts(report.cached_at), "ttl": "24시간"},
         "etf_holdings": {
             "time": _fmt_ts(cache.get_latest_created_at("etf_holdings:")),
             "ttl": "24시간",

@@ -16,8 +16,8 @@ from .us_news import NewsResult, fetch_news
 
 logger = logging.getLogger(__name__)
 
-# 캐시 TTL (초): 기본 1시간
-CACHE_TTL_SECONDS = 3600
+# 캐시 TTL (초): 24시간 (수동 새로고침으로 갱신)
+CACHE_TTL_SECONDS = 86400
 _CACHE_KEY_PREFIX = "recommendation:"
 
 
