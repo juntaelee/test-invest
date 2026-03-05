@@ -63,6 +63,12 @@ class RecommendationReport:
         for etf, pct in sorted(self.market_snapshot.sector_changes.items(), key=lambda x: -x[1]):
             lines.append(f"  {etf}: {pct:+.2f}%")
 
+        if self.market_snapshot.theme_changes:
+            lines.append("")
+            lines.append("[ 미국 테마 ETF 등락률 ]")
+            for etf, pct in sorted(self.market_snapshot.theme_changes.items(), key=lambda x: -x[1]):
+                lines.append(f"  {etf}: {pct:+.2f}%")
+
         lines.append("")
         lines.append(f"[ 뉴스 헤드라인 {len(self.news_result.headlines)}건 ]")
         if self.news_result.keyword_counts:
@@ -76,7 +82,8 @@ class RecommendationReport:
             lines.append(
                 f"  {i}. {rec.name}({rec.code}) "
                 f"종합={rec.total_score:.1f} "
-                f"(섹터={rec.sector_score:.1f}, 뉴스={rec.news_score:.1f})"
+                f"(섹터={rec.sector_score:.1f}, 테마={rec.theme_score:.1f}, "
+                f"뉴스={rec.news_score:.1f})"
             )
 
         return "\n".join(lines)
@@ -121,6 +128,7 @@ def run_recommendation(
         sector_changes=snapshot.sector_changes,
         keyword_counts=news.keyword_counts,
         top_n=top_n,
+        theme_changes=snapshot.theme_changes,
     )
 
     # 4. 보고서 생성

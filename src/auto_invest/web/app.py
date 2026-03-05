@@ -103,6 +103,17 @@ _SECTOR_KR = {
     "XLC": "커뮤니케이션",
 }
 
+_THEME_KR = {
+    "BOTZ": "AI/로봇",
+    "LIT": "2차전지",
+    "XBI": "바이오테크",
+    "ESPO": "게임/e스포츠",
+    "CIBR": "사이버보안",
+    "SKYY": "클라우드",
+    "ICLN": "클린에너지",
+    "ITA": "방산/항공",
+}
+
 _KEYWORD_KR = {
     "semiconductor": "반도체",
     "chip": "칩",
@@ -133,6 +144,16 @@ def _build_context(report: RecommendationReport) -> dict:
     )
     sorted_sectors = [
         (_SECTOR_KR.get(etf, etf), pct) for etf, pct in sorted_sectors
+    ]
+
+    # 테마 등락률 정렬 (내림차순), 한국어 변환
+    sorted_themes = sorted(
+        report.market_snapshot.theme_changes.items(),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    sorted_themes = [
+        (_THEME_KR.get(etf, etf), pct) for etf, pct in sorted_themes
     ]
 
     # 키워드 빈도 정렬 (내림차순), 한국어 변환
@@ -170,6 +191,7 @@ def _build_context(report: RecommendationReport) -> dict:
         "cache_info": cache_info,
         "index_changes": report.market_snapshot.index_changes,
         "sector_changes": sorted_sectors,
+        "theme_changes": sorted_themes,
         "recommendations": report.recommendations,
         "keyword_counts": sorted_keywords,
         "headline_count": len(report.news_result.headlines),
@@ -203,6 +225,7 @@ async def api_recommend(top_n: int = 10, force_refresh: bool = False):
         "timestamp": report.timestamp,
         "index_changes": report.market_snapshot.index_changes,
         "sector_changes": report.market_snapshot.sector_changes,
+        "theme_changes": report.market_snapshot.theme_changes,
         "keyword_counts": report.news_result.keyword_counts,
         "headline_count": len(report.news_result.headlines),
         "recommendations": [
@@ -212,6 +235,7 @@ async def api_recommend(top_n: int = 10, force_refresh: bool = False):
                 "name": r.name,
                 "total_score": r.total_score,
                 "sector_score": r.sector_score,
+                "theme_score": r.theme_score,
                 "news_score": r.news_score,
             }
             for i, r in enumerate(report.recommendations, 1)

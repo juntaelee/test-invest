@@ -36,6 +36,7 @@ SECTOR_ETF_MAP: dict[str, list[KrEtfMapping]] = {
         KrEtfMapping("363580", "KODEX K-테크TOP10"),
         KrEtfMapping("462330", "TIGER AI반도체핵심공정"),
         KrEtfMapping("456600", "KODEX K-로봇"),
+        KrEtfMapping("395170", "TIGER AI코리아"),
     ],
     # 반도체 (Semiconductor)
     "SOXX": [
@@ -43,15 +44,18 @@ SECTOR_ETF_MAP: dict[str, list[KrEtfMapping]] = {
         KrEtfMapping("462330", "TIGER AI반도체핵심공정"),
         KrEtfMapping("466940", "KODEX AI반도체핵심장비"),
         KrEtfMapping("396500", "TIGER 소부장"),
+        KrEtfMapping("091230", "TIGER 반도체"),
     ],
     # 헬스케어 (Healthcare)
     "XLV": [
         KrEtfMapping("266420", "KODEX 헬스케어"),
         KrEtfMapping("371460", "TIGER 바이오TOP10"),
+        KrEtfMapping("364970", "KODEX K-이노베이션"),
     ],
     # 에너지 (Energy)
     "XLE": [
         KrEtfMapping("117460", "KODEX 에너지화학"),
+        KrEtfMapping("385520", "KODEX K-신재생에너지"),
     ],
     # 산업재 (Industrials)
     "XLI": [
@@ -59,6 +63,7 @@ SECTOR_ETF_MAP: dict[str, list[KrEtfMapping]] = {
         KrEtfMapping("455850", "KODEX K-조선"),
         KrEtfMapping("465330", "TIGER 조선TOP10"),
         KrEtfMapping("456600", "KODEX K-로봇"),
+        KrEtfMapping("381560", "TIGER 우주항공&로보"),
     ],
     # 소재 (Materials)
     "XLB": [
@@ -73,11 +78,65 @@ SECTOR_ETF_MAP: dict[str, list[KrEtfMapping]] = {
     "XLY": [
         KrEtfMapping("091180", "KODEX 자동차"),
         KrEtfMapping("396520", "TIGER K게임"),
+        KrEtfMapping("228790", "TIGER 화장품"),
+        KrEtfMapping("385510", "KODEX K-미래차"),
     ],
     # 통신 (Communication Services)
     "XLC": [
         KrEtfMapping("363580", "KODEX K-테크TOP10"),
         KrEtfMapping("396520", "TIGER K게임"),
+        KrEtfMapping("228810", "TIGER 미디어컨텐츠"),
+    ],
+}
+
+# ── 미국 테마 ETF → 한국 ETF 매핑 ──────────────────────────────────
+# 섹터보다 세분화된 테마별 등락률 추적
+THEME_ETF_MAP: dict[str, list[KrEtfMapping]] = {
+    # AI/로봇 (BOTZ - Global Robotics & AI)
+    "BOTZ": [
+        KrEtfMapping("456600", "KODEX K-로봇"),
+        KrEtfMapping("462330", "TIGER AI반도체핵심공정"),
+        KrEtfMapping("363580", "KODEX K-테크TOP10"),
+        KrEtfMapping("395170", "TIGER AI코리아"),
+        KrEtfMapping("381560", "TIGER 우주항공&로보"),
+    ],
+    # 2차전지/배터리 (LIT - Lithium & Battery Tech)
+    "LIT": [
+        KrEtfMapping("305720", "KODEX 2차전지산업"),
+        KrEtfMapping("394670", "TIGER 2차전지TOP10"),
+        KrEtfMapping("385510", "KODEX K-미래차"),
+    ],
+    # 바이오테크 (XBI - S&P Biotech)
+    "XBI": [
+        KrEtfMapping("266420", "KODEX 헬스케어"),
+        KrEtfMapping("371460", "TIGER 바이오TOP10"),
+        KrEtfMapping("364970", "KODEX K-이노베이션"),
+    ],
+    # 게임/e스포츠 (ESPO - VanEck Video Gaming & Esports)
+    "ESPO": [
+        KrEtfMapping("396520", "TIGER K게임"),
+        KrEtfMapping("228810", "TIGER 미디어컨텐츠"),
+    ],
+    # 사이버보안 (CIBR - Cybersecurity)
+    "CIBR": [
+        KrEtfMapping("363580", "KODEX K-테크TOP10"),
+        KrEtfMapping("395170", "TIGER AI코리아"),
+    ],
+    # 클라우드 컴퓨팅 (SKYY - Cloud Computing)
+    "SKYY": [
+        KrEtfMapping("363580", "KODEX K-테크TOP10"),
+        KrEtfMapping("395170", "TIGER AI코리아"),
+    ],
+    # 클린에너지 (ICLN - Global Clean Energy)
+    "ICLN": [
+        KrEtfMapping("117460", "KODEX 에너지화학"),
+        KrEtfMapping("385520", "KODEX K-신재생에너지"),
+        KrEtfMapping("385510", "KODEX K-미래차"),
+    ],
+    # 방산/항공 (ITA - U.S. Aerospace & Defense)
+    "ITA": [
+        KrEtfMapping("140710", "KODEX 운송"),
+        KrEtfMapping("381560", "TIGER 우주항공&로보"),
     ],
 }
 

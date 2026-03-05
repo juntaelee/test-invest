@@ -117,12 +117,20 @@ class TestCalcSectorScores:
         assert len(scores) == 0
 
     def test_mixed_sectors(self, mock_fetch):
-        sector_changes = {"XLK": 3.0, "XLE": -1.0}
+        sector_changes = {"XLK": 3.0, "XLE": -2.0}
         scores, _ = calc_sector_scores(sector_changes)
 
         # XLK 관련주만 점수가 있어야 함
         assert "005930" in scores  # 삼성전자 (XLK → KODEX 반도체)
-        assert "096770" not in scores  # SK이노베이션 (XLE, 하락)
+        assert "096770" not in scores  # SK이노베이션 (XLE, -2% 큰 하락은 제외)
+
+    def test_mild_drop_gives_reduced_score(self, mock_fetch):
+        """약보합(-1% 이내) 하락 섹터도 감소된 점수를 받는다."""
+        sector_changes = {"XLE": -0.5}
+        scores, _ = calc_sector_scores(sector_changes)
+        # -0.5%는 약보합이므로 점수가 부여되어야 함
+        assert "096770" in scores  # SK이노베이션
+        assert scores["096770"] > 0
 
     def test_normalization_max_is_10(self, mock_fetch):
         sector_changes = {"XLK": 5.0, "SOXX": 3.0}

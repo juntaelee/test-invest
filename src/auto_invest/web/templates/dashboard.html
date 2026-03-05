@@ -222,6 +222,7 @@
             vertical-align: middle;
         }
         .score-sector { background: #3fb950; }
+        .score-theme { background: #a371f7; }
         .score-news { background: #f0883e; }
 
         /* 푸터 */
@@ -526,98 +527,86 @@
             </div>
         </div>
 
-        <!-- 섹터 ETF -->
-        <div class="card" style="margin-bottom: 24px;">
-            <h2>미국 섹터 ETF 등락률</h2>
-            <ul class="sector-list">
-                {% for etf, pct in sector_changes %}
-                {% set abs_pct = pct if pct > 0 else -pct %}
-                {% set bar_width = (abs_pct / 6 * 100) if abs_pct < 6 else 100 %}
-                <li class="sector-item">
-                    <span class="sector-name">{{ etf }}</span>
-                    <div class="sector-bar-wrap">
-                        <div class="sector-bar {% if pct >= 0 %}positive{% else %}negative{% endif %}"
-                             style="width: {{ bar_width }}%"></div>
-                    </div>
-                    <span class="sector-pct {% if pct > 0 %}up{% elif pct < 0 %}down{% else %}flat{% endif %}">
-                        {{ "%+.2f"|format(pct) }}%
-                    </span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-
-        <!-- 추천 종목 -->
-        <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h2 style="margin-bottom:0;">추천 종목 <span id="rec-count">{{ recommendations|length }}</span>개</h2>
-                <input type="text" id="search-input" placeholder="종목명 또는 코드 검색..."
-                    style="background:#0d1117; border:1px solid #30363d; border-radius:6px;
-                           padding:6px 12px; color:#e1e4e8; font-size:13px; width:220px;
-                           outline:none;"
-                    onfocus="this.style.borderColor='#58a6ff'"
-                    onblur="this.style.borderColor='#30363d'">
-            </div>
-            {% if recommendations %}
-            <div class="table-wrap">
-            <table class="rec-table" id="rec-table">
-                <thead>
-                    <tr>
-                        <th style="width:50px; cursor:pointer;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>
-                        <th style="cursor:pointer;" data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>
-                        <th style="width:100px; cursor:pointer;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>
-                        <th style="width:150px; cursor:pointer;" data-sort="sector" data-type="num">섹터 점수 <span class="sort-icon"></span></th>
-                        <th style="width:150px; cursor:pointer;" data-sort="news" data-type="num">뉴스 점수 <span class="sort-icon"></span></th>
-                        <th style="width:55px;">매수</th>
-                        <th style="width:130px;">예약매수</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for rec in recommendations %}
-                    <tr data-name="{{ rec.name }}" data-code="{{ rec.code }}"
-                        data-rank="{{ loop.index }}" data-total="{{ rec.total_score }}"
-                        data-sector="{{ rec.sector_score }}" data-news="{{ rec.news_score }}">
-                        <td>
-                            <span class="rank {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
-                                {{ loop.index }}
-                            </span>
-                        </td>
-                        <td>
-                            <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ rec.code }}" target="_blank" rel="noopener">
-                                <span class="stock-name">{{ rec.name }}</span>
-                                <span class="stock-code">{{ rec.code }}</span>
-                            </a>
-                        </td>
-                        <td style="font-weight:700; font-size:16px;">{{ "%.1f"|format(rec.total_score) }}</td>
-                        <td>
-                            <span class="score-bar score-sector" style="width: {{ (rec.sector_score / 10 * 80)|int }}px"></span>
-                            {{ "%.1f"|format(rec.sector_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-news" style="width: {{ (rec.news_score / 10 * 80)|int }}px"></span>
-                            {{ "%.1f"|format(rec.news_score) }}
-                        </td>
-                        <td>
-                            <button class="buy-btn" onclick="openBuyModal('{{ rec.code }}', '{{ rec.name }}')">매수</button>
-                        </td>
-                        <td style="white-space:nowrap;">
-                            <button class="premarket-btn" onclick="openReservationModal('{{ rec.code }}', '{{ rec.name }}', 'pre_market')" title="08:30 장전 시간외">08:30</button>
-                            <button class="premarket-btn" style="background:#238636;" onclick="openReservationModal('{{ rec.code }}', '{{ rec.name }}', 'market_open')" title="09:00 장개시 시장가">09:00</button>
-                        </td>
-                    </tr>
+        <!-- 섹터 & 테마 ETF -->
+        <div class="grid" style="margin-bottom: 24px;">
+            <div class="card">
+                <h2>섹터 ETF 등락률</h2>
+                <ul class="sector-list">
+                    {% for etf, pct in sector_changes %}
+                    {% set abs_pct = pct if pct > 0 else -pct %}
+                    {% set bar_width = (abs_pct / 6 * 100) if abs_pct < 6 else 100 %}
+                    <li class="sector-item">
+                        <span class="sector-name">{{ etf }}</span>
+                        <div class="sector-bar-wrap">
+                            <div class="sector-bar {% if pct >= 0 %}positive{% else %}negative{% endif %}"
+                                 style="width: {{ bar_width }}%"></div>
+                        </div>
+                        <span class="sector-pct {% if pct > 0 %}up{% elif pct < 0 %}down{% else %}flat{% endif %}">
+                            {{ "%+.2f"|format(pct) }}%
+                        </span>
+                    </li>
                     {% endfor %}
-                </tbody>
-            </table>
+                </ul>
             </div>
-            {% else %}
-            <div class="empty-state">추천 종목이 없습니다. 미국 시장 데이터를 확인하세요.</div>
-            {% endif %}
-        </div>
-    </div>
 
-    <!-- 수동 시간외 예약 -->
-    <div class="container" style="padding-top:0;">
-        <div class="card">
+            <div class="card">
+                <h2>테마 ETF 등락률</h2>
+                <ul class="sector-list">
+                    {% for etf, pct in theme_changes %}
+                    {% set abs_pct = pct if pct > 0 else -pct %}
+                    {% set bar_width = (abs_pct / 6 * 100) if abs_pct < 6 else 100 %}
+                    <li class="sector-item">
+                        <span class="sector-name" style="width: 80px;">{{ etf }}</span>
+                        <div class="sector-bar-wrap">
+                            <div class="sector-bar {% if pct >= 0 %}positive{% else %}negative{% endif %}"
+                                 style="width: {{ bar_width }}%"></div>
+                        </div>
+                        <span class="sector-pct {% if pct > 0 %}up{% elif pct < 0 %}down{% else %}flat{% endif %}">
+                            {{ "%+.2f"|format(pct) }}%
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- 수동 즉시 매수 -->
+        <div class="card" style="margin-bottom: 24px;">
+            <h2>수동 즉시 매수</h2>
+            <div class="manual-form-grid">
+                <div>
+                    <label>종목코드</label>
+                    <input type="text" id="instant-code" placeholder="005930" oninput="autoLookupInstantName()">
+                </div>
+                <div>
+                    <label>종목명 <span id="instant-name-status" style="font-size:11px;"></span></label>
+                    <input type="text" id="instant-name" placeholder="자동 조회" readonly style="color:#8b949e;">
+                </div>
+                <div>
+                    <label>수량</label>
+                    <input type="number" id="instant-qty" value="1" min="1">
+                </div>
+                <div>
+                    <label>익절 %</label>
+                    <input type="number" id="instant-tp" value="4.0" step="0.5">
+                </div>
+                <div>
+                    <label>손절 %</label>
+                    <input type="number" id="instant-sl" value="-3.0" step="0.5">
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <div>&nbsp;</div>
+                </div>
+                <div>
+                    <label>&nbsp;</label>
+                    <button class="buy-btn" style="padding:7px 16px; font-size:13px;" onclick="submitInstantBuy()">매수</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 수동 예약 매수 -->
+        <div class="card" style="margin-bottom: 24px;">
             <h2>수동 예약 매수</h2>
             <div class="manual-form-grid">
                 <div>
@@ -652,6 +641,79 @@
                     <button class="premarket-btn" style="padding:7px 16px;" onclick="submitManualReservation()">예약</button>
                 </div>
             </div>
+        </div>
+
+        <!-- 추천 종목 -->
+        <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                <h2 style="margin-bottom:0;">추천 종목 <span id="rec-count">{{ recommendations|length }}</span>개</h2>
+                <input type="text" id="search-input" placeholder="종목명 또는 코드 검색..."
+                    style="background:#0d1117; border:1px solid #30363d; border-radius:6px;
+                           padding:6px 12px; color:#e1e4e8; font-size:13px; width:220px;
+                           outline:none;"
+                    onfocus="this.style.borderColor='#58a6ff'"
+                    onblur="this.style.borderColor='#30363d'">
+            </div>
+            {% if recommendations %}
+            <div class="table-wrap">
+            <table class="rec-table" id="rec-table">
+                <thead>
+                    <tr>
+                        <th style="width:50px; cursor:pointer;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>
+                        <th style="cursor:pointer;" data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>
+                        <th style="width:80px; cursor:pointer;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>
+                        <th style="width:130px; cursor:pointer;" data-sort="sector" data-type="num">섹터 <span class="sort-icon"></span></th>
+                        <th style="width:130px; cursor:pointer;" data-sort="theme" data-type="num">테마 <span class="sort-icon"></span></th>
+                        <th style="width:130px; cursor:pointer;" data-sort="news" data-type="num">뉴스 <span class="sort-icon"></span></th>
+                        <th style="width:55px;">매수</th>
+                        <th style="width:130px;">예약매수</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in recommendations %}
+                    <tr data-name="{{ rec.name }}" data-code="{{ rec.code }}"
+                        data-rank="{{ loop.index }}" data-total="{{ rec.total_score }}"
+                        data-sector="{{ rec.sector_score }}" data-theme="{{ rec.theme_score }}"
+                        data-news="{{ rec.news_score }}">
+                        <td>
+                            <span class="rank {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
+                                {{ loop.index }}
+                            </span>
+                        </td>
+                        <td>
+                            <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ rec.code }}" target="_blank" rel="noopener">
+                                <span class="stock-name">{{ rec.name }}</span>
+                                <span class="stock-code">{{ rec.code }}</span>
+                            </a>
+                        </td>
+                        <td style="font-weight:700; font-size:16px;">{{ "%.1f"|format(rec.total_score) }}</td>
+                        <td>
+                            <span class="score-bar score-sector" style="width: {{ (rec.sector_score / 10 * 60)|int }}px"></span>
+                            {{ "%.1f"|format(rec.sector_score) }}
+                        </td>
+                        <td>
+                            <span class="score-bar score-theme" style="width: {{ (rec.theme_score / 10 * 60)|int }}px"></span>
+                            {{ "%.1f"|format(rec.theme_score) }}
+                        </td>
+                        <td>
+                            <span class="score-bar score-news" style="width: {{ (rec.news_score / 10 * 60)|int }}px"></span>
+                            {{ "%.1f"|format(rec.news_score) }}
+                        </td>
+                        <td>
+                            <button class="buy-btn" onclick="openBuyModal('{{ rec.code }}', '{{ rec.name }}')">매수</button>
+                        </td>
+                        <td style="white-space:nowrap;">
+                            <button class="premarket-btn" onclick="openReservationModal('{{ rec.code }}', '{{ rec.name }}', 'pre_market')" title="08:30 장전 시간외">08:30</button>
+                            <button class="premarket-btn" style="background:#238636;" onclick="openReservationModal('{{ rec.code }}', '{{ rec.name }}', 'market_open')" title="09:00 장개시 시장가">09:00</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="empty-state">추천 종목이 없습니다. 미국 시장 데이터를 확인하세요.</div>
+            {% endif %}
         </div>
     </div>
 
@@ -760,6 +822,9 @@
                     } else if (col === 'sector') {
                         va = parseFloat(a.dataset.sector);
                         vb = parseFloat(b.dataset.sector);
+                    } else if (col === 'theme') {
+                        va = parseFloat(a.dataset.theme);
+                        vb = parseFloat(b.dataset.theme);
                     } else if (col === 'news') {
                         va = parseFloat(a.dataset.news);
                         vb = parseFloat(b.dataset.news);
@@ -899,6 +964,92 @@
         };
 
         _submitReservationRequest(payload, btn, '예약');
+    }
+
+    // 수동 즉시 매수 - 종목명 자동조회
+    var _instantLookupTimer = null;
+    function autoLookupInstantName() {
+        var code = document.getElementById('instant-code').value.trim();
+        var nameEl = document.getElementById('instant-name');
+        var statusEl = document.getElementById('instant-name-status');
+
+        if (_instantLookupTimer) clearTimeout(_instantLookupTimer);
+
+        if (code.length < 6) {
+            nameEl.value = '';
+            statusEl.textContent = '';
+            return;
+        }
+
+        statusEl.textContent = '조회 중...';
+        statusEl.style.color = '#8b949e';
+
+        _instantLookupTimer = setTimeout(function() {
+            fetch('/api/stock-name/' + encodeURIComponent(code))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    nameEl.value = data.stock_name;
+                    nameEl.style.color = '#e1e4e8';
+                    statusEl.textContent = '';
+                } else {
+                    nameEl.value = '';
+                    nameEl.style.color = '#8b949e';
+                    statusEl.textContent = '조회 실패';
+                    statusEl.style.color = '#f85149';
+                }
+            })
+            .catch(function() {
+                statusEl.textContent = '오류';
+                statusEl.style.color = '#f85149';
+            });
+        }, 300);
+    }
+
+    // 수동 즉시 매수 - 주문 실행
+    function submitInstantBuy() {
+        var code = document.getElementById('instant-code').value.trim();
+        var name = document.getElementById('instant-name').value.trim();
+        var qty = parseInt(document.getElementById('instant-qty').value);
+
+        if (!code || !qty || qty <= 0) {
+            alert('종목코드와 수량을 입력해주세요.');
+            return;
+        }
+        if (!name) {
+            alert('종목명을 조회할 수 없습니다. 종목코드를 확인해주세요.');
+            return;
+        }
+
+        if (!confirm(name + ' ' + qty + '주를 즉시 매수하시겠습니까?')) return;
+
+        var payload = {
+            stock_code: code,
+            stock_name: name,
+            quantity: qty,
+            tp_pct: parseFloat(document.getElementById('instant-tp').value),
+            sl_pct: parseFloat(document.getElementById('instant-sl').value)
+        };
+
+        fetch('/api/buy', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                alert('매수 주문 완료: ' + name);
+                document.getElementById('instant-code').value = '';
+                document.getElementById('instant-name').value = '';
+                document.getElementById('instant-qty').value = '1';
+            } else {
+                alert('매수 실패: ' + data.message);
+            }
+        })
+        .catch(function(err) {
+            alert('요청 오류: ' + err);
+        });
     }
 
     var _lookupTimer = null;

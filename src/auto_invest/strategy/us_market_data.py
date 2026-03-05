@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 import yfinance as yf
 
-from .mappings import SECTOR_ETF_MAP
+from .mappings import SECTOR_ETF_MAP, THEME_ETF_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,8 @@ class MarketSnapshot:
     """미국 시장 스냅샷 (등락률 %)."""
 
     index_changes: dict[str, float] = field(default_factory=dict)  # 지수명 → 등락률
-    sector_changes: dict[str, float] = field(default_factory=dict)  # ETF 티커 → 등락률
+    sector_changes: dict[str, float] = field(default_factory=dict)  # 섹터 ETF 티커 → 등락률
+    theme_changes: dict[str, float] = field(default_factory=dict)  # 테마 ETF 티커 → 등락률
 
 
 def _calc_change_pct(ticker_data) -> float | None:
@@ -43,8 +44,12 @@ def _calc_change_pct(ticker_data) -> float | None:
 
 
 def fetch_market_snapshot() -> MarketSnapshot:
-    """미국 지수 + 섹터 ETF 등락률을 일괄 조회하여 반환."""
-    all_tickers = list(INDEX_TICKERS.values()) + list(SECTOR_ETF_MAP.keys())
+    """미국 지수 + 섹터 ETF + 테마 ETF 등락률을 일괄 조회하여 반환."""
+    all_tickers = (
+        list(INDEX_TICKERS.values())
+        + list(SECTOR_ETF_MAP.keys())
+        + list(THEME_ETF_MAP.keys())
+    )
     ticker_str = " ".join(all_tickers)
 
     logger.info("yfinance 데이터 조회: %s", ticker_str)
@@ -68,6 +73,15 @@ def fetch_market_snapshot() -> MarketSnapshot:
             pct = _calc_change_pct(ticker_data)
             if pct is not None:
                 snapshot.sector_changes[etf] = pct
-                logger.info("  %s: %+.2f%%", etf, pct)
+                logger.info("  섹터 %s: %+.2f%%", etf, pct)
+
+    # 테마 ETF 등락률
+    for etf in THEME_ETF_MAP:
+        ticker_data = data[etf] if etf in data.columns.get_level_values(0) else None
+        if ticker_data is not None:
+            pct = _calc_change_pct(ticker_data)
+            if pct is not None:
+                snapshot.theme_changes[etf] = pct
+                logger.info("  테마 %s: %+.2f%%", etf, pct)
 
     return snapshot
