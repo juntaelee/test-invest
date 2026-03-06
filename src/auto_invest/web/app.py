@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from auto_invest.api.kis_market import get_stock_price
 from auto_invest.api.kis_trading import KISTradingError
 from auto_invest.core.monitor import start_scheduler
 from auto_invest.core.trading import (
@@ -266,8 +267,12 @@ async def discover_page(request: Request):
             "timestamp": report.timestamp,
             "cached_at": cached_at_str,
             "volume_top": report.volume_top,
-            "after_hour_top": report.after_hour_top,
+            "trading_value_top": report.trading_value_top,
             "fluctuation_top": report.fluctuation_top,
+            "turnover_top": report.turnover_top,
+            "foreign_top": report.foreign_top,
+            "institution_top": report.institution_top,
+            "strength_top": report.strength_top,
             "combined": report.combined,
         },
     )
@@ -369,11 +374,17 @@ async def api_delete_position(stock_code: str):
 
 @app.get("/api/stock-name/{stock_code}")
 async def api_stock_name(stock_code: str):
-    """종목코드로 종목명을 조회한다."""
+    """종목코드로 종목명과 현재가를 조회한다."""
     name = lookup_stock_name(stock_code)
-    if name:
-        return {"success": True, "stock_name": name}
-    return {"success": False, "stock_name": None, "message": "종목명 조회 실패"}
+    if not name:
+        return {"success": False, "stock_name": None, "message": "종목명 조회 실패"}
+    result: dict = {"success": True, "stock_name": name}
+    price_info = get_stock_price(stock_code)
+    if price_info:
+        result["current_price"] = price_info["current_price"]
+        result["change_rate"] = price_info["change_rate"]
+        result["change_amount"] = price_info["change_amount"]
+    return result
 
 
 # ── 장전 시간외 예약 엔드포인트 ──────────────────────────

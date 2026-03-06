@@ -126,6 +126,10 @@
             padding: 8px;
             border-bottom: 1px solid #21262d;
         }
+        .mini-table-wrap {
+            max-height: 420px;
+            overflow-y: auto;
+        }
         .mini-table tr:hover { background: #1c2028; }
         .mini-rank {
             display: inline-flex;
@@ -204,8 +208,11 @@
             vertical-align: middle;
         }
         .score-volume { background: #f0883e; }
-        .score-afterhour { background: #a371f7; }
-        .score-fluctuation { background: #3fb950; }
+        .score-tradingval { background: #58a6ff; }
+        .score-turnover { background: #d2a8ff; }
+        .score-foreign { background: #f778ba; }
+        .score-institution { background: #ffd700; }
+        .score-strength { background: #ff6b6b; }
 
         /* 버튼 */
         .buy-btn {
@@ -374,6 +381,10 @@
                 <a href="/">추천</a>
                 <a href="/discover" class="active">발굴</a>
                 <a href="/portfolio">포트폴리오</a>
+                <span class="quick-trade-btns">
+                    <button class="quick-buy-btn" onclick="qtOpenBuy()">빠른 매수</button>
+                    <button class="quick-reserve-btn" onclick="qtOpenReserve()">예약 매수</button>
+                </span>
             </nav>
         </div>
         <div style="text-align: right;">
@@ -389,23 +400,24 @@
     </header>
 
     <div class="container">
-        <!-- 시그널 카드 3개 -->
+        <!-- 시그널 카드 6개 (한 줄 3개) -->
         <div class="grid-3">
-            <!-- 거래량 폭발 -->
+            {% macro signal_card(title, icon, color, items, value_label, value_field, value_format) %}
             <div class="card">
-                <h2><span class="card-icon" style="color:#f0883e;">&#9650;</span> 거래량 폭발</h2>
-                {% if volume_top %}
+                <h2><span class="card-icon" style="color:{{ color }};">{{ icon|safe }}</span> {{ title }}</h2>
+                {% if items %}
+                <div class="mini-table-wrap">
                 <table class="mini-table">
                     <thead>
                         <tr>
                             <th style="width:30px;">#</th>
                             <th>종목</th>
-                            <th style="text-align:right;">증가율</th>
+                            <th style="text-align:right;">{{ value_label }}</th>
                             <th style="text-align:right;">등락</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in volume_top %}
+                        {% for item in items %}
                         <tr>
                             <td><span class="mini-rank {% if loop.index == 1 %}mini-rank-1{% elif loop.index == 2 %}mini-rank-2{% elif loop.index == 3 %}mini-rank-3{% endif %}">{{ loop.index }}</span></td>
                             <td>
@@ -413,8 +425,12 @@
                                     {{ item.stock_name }}
                                 </a>
                             </td>
-                            <td style="text-align:right; font-weight:600; color:#f0883e;" class="num-format">
-                                {{ "%.0f"|format(item.volume_rate) }}%
+                            <td style="text-align:right; font-weight:600; color:{{ color }};" class="num-format">
+                                {% if value_format == 'pct' %}{{ "%.0f"|format(item[value_field]) }}%
+                                {% elif value_format == 'pct2' %}{{ "%+.2f"|format(item[value_field]) }}%
+                                {% elif value_format == 'billions' %}{% set v = item[value_field] / 100000000 %}{{ "%.0f"|format(v) }}억
+                                {% elif value_format == 'comma' %}{{ "{:,}".format(item[value_field]) }}
+                                {% endif %}
                             </td>
                             <td style="text-align:right;" class="num-format {% if item.change_rate > 0 %}up{% elif item.change_rate < 0 %}down{% else %}flat{% endif %}">
                                 {{ "%+.2f"|format(item.change_rate) }}%
@@ -423,84 +439,19 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
                 {% else %}
                 <div class="empty-state">데이터 없음</div>
                 {% endif %}
             </div>
+            {% endmacro %}
 
-            <!-- 시간외 매수잔량 -->
-            <div class="card">
-                <h2><span class="card-icon" style="color:#a371f7;">&#9679;</span> 시간외 매수잔량</h2>
-                {% if after_hour_top %}
-                <table class="mini-table">
-                    <thead>
-                        <tr>
-                            <th style="width:30px;">#</th>
-                            <th>종목</th>
-                            <th style="text-align:right;">매수잔량</th>
-                            <th style="text-align:right;">등락</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in after_hour_top %}
-                        <tr>
-                            <td><span class="mini-rank {% if loop.index == 1 %}mini-rank-1{% elif loop.index == 2 %}mini-rank-2{% elif loop.index == 3 %}mini-rank-3{% endif %}">{{ loop.index }}</span></td>
-                            <td>
-                                <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ item.stock_code }}" target="_blank" rel="noopener">
-                                    {{ item.stock_name }}
-                                </a>
-                            </td>
-                            <td style="text-align:right; font-weight:600; color:#a371f7;" class="num-format">
-                                {{ "{:,}".format(item.after_hour_buy_qty) }}
-                            </td>
-                            <td style="text-align:right;" class="num-format {% if item.change_rate > 0 %}up{% elif item.change_rate < 0 %}down{% else %}flat{% endif %}">
-                                {{ "%+.2f"|format(item.change_rate) }}%
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <div class="empty-state">데이터 없음</div>
-                {% endif %}
-            </div>
-
-            <!-- 등락률 상위 -->
-            <div class="card">
-                <h2><span class="card-icon" style="color:#3fb950;">&#9733;</span> 등락률 상위</h2>
-                {% if fluctuation_top %}
-                <table class="mini-table">
-                    <thead>
-                        <tr>
-                            <th style="width:30px;">#</th>
-                            <th>종목</th>
-                            <th style="text-align:right;">등락률</th>
-                            <th style="text-align:right;">현재가</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in fluctuation_top %}
-                        <tr>
-                            <td><span class="mini-rank {% if loop.index == 1 %}mini-rank-1{% elif loop.index == 2 %}mini-rank-2{% elif loop.index == 3 %}mini-rank-3{% endif %}">{{ loop.index }}</span></td>
-                            <td>
-                                <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ item.stock_code }}" target="_blank" rel="noopener">
-                                    {{ item.stock_name }}
-                                </a>
-                            </td>
-                            <td style="text-align:right; font-weight:600; color:#3fb950;" class="num-format">
-                                {{ "%+.2f"|format(item.change_rate) }}%
-                            </td>
-                            <td style="text-align:right;" class="num-format">
-                                {{ "{:,}".format(item.current_price) }}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <div class="empty-state">데이터 없음</div>
-                {% endif %}
-            </div>
+            {{ signal_card("거래량 폭발", "&#9650;", "#f0883e", volume_top, "증가율", "volume_rate", "pct") }}
+            {{ signal_card("거래대금 TOP", "&#9650;", "#58a6ff", trading_value_top, "거래대금", "trading_value", "billions") }}
+            {{ signal_card("거래 회전율", "&#9679;", "#d2a8ff", turnover_top, "회전율", "turnover_rate", "pct") }}
+            {{ signal_card("외국인 순매수", "&#9650;", "#f778ba", foreign_top, "순매수", "foreign_net_qty", "comma") }}
+            {{ signal_card("기관 순매수", "&#9650;", "#ffd700", institution_top, "순매수", "institution_net_qty", "comma") }}
+            {{ signal_card("체결강도", "&#9889;", "#ff6b6b", strength_top, "체결강도", "trade_strength", "pct") }}
         </div>
 
         <!-- 종합 발굴 테이블 -->
@@ -519,14 +470,17 @@
             <table class="rec-table" id="rec-table">
                 <thead>
                     <tr>
-                        <th style="width:50px;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>
+                        <th style="width:45px;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>
                         <th data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>
-                        <th style="width:70px;" data-sort="price" data-type="num">현재가 <span class="sort-icon"></span></th>
-                        <th style="width:70px;" data-sort="change" data-type="num">등락률 <span class="sort-icon"></span></th>
-                        <th style="width:80px;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>
-                        <th style="width:120px;" data-sort="volume" data-type="num">거래량 <span class="sort-icon"></span></th>
-                        <th style="width:120px;" data-sort="afterhour" data-type="num">시간외 <span class="sort-icon"></span></th>
-                        <th style="width:120px;" data-sort="fluctuation" data-type="num">등락률 <span class="sort-icon"></span></th>
+                        <th style="width:65px;" data-sort="price" data-type="num">현재가 <span class="sort-icon"></span></th>
+                        <th style="width:60px;" data-sort="change" data-type="num">등락 <span class="sort-icon"></span></th>
+                        <th style="width:65px;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>
+                        <th style="width:90px;" data-sort="volume" data-type="num">거래량 <span class="sort-icon"></span></th>
+                        <th style="width:90px;" data-sort="tradingval" data-type="num">거래대금 <span class="sort-icon"></span></th>
+                        <th style="width:90px;" data-sort="turnover" data-type="num">회전율 <span class="sort-icon"></span></th>
+                        <th style="width:90px;" data-sort="foreign" data-type="num">외국인 <span class="sort-icon"></span></th>
+                        <th style="width:90px;" data-sort="institution" data-type="num">기관 <span class="sort-icon"></span></th>
+                        <th style="width:90px;" data-sort="strength" data-type="num">체결강도 <span class="sort-icon"></span></th>
                         <th style="width:55px;">매수</th>
                         <th style="width:130px;">예약매수</th>
                     </tr>
@@ -535,9 +489,10 @@
                     {% for item in combined %}
                     <tr data-name="{{ item.stock_name }}" data-code="{{ item.stock_code }}"
                         data-rank="{{ loop.index }}" data-total="{{ item.total_score }}"
-                        data-volume="{{ item.volume_score }}" data-afterhour="{{ item.after_hour_score }}"
-                        data-fluctuation="{{ item.fluctuation_score }}" data-price="{{ item.current_price }}"
-                        data-change="{{ item.change_rate }}">
+                        data-volume="{{ item.volume_score }}" data-tradingval="{{ item.trading_value_score }}"
+                        data-turnover="{{ item.turnover_score }}"
+                        data-foreign="{{ item.foreign_score }}" data-institution="{{ item.institution_score }}" data-strength="{{ item.strength_score }}"
+                        data-price="{{ item.current_price }}" data-change="{{ item.change_rate }}">
                         <td>
                             <span class="rank {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
                                 {{ loop.index }}
@@ -555,16 +510,28 @@
                         </td>
                         <td style="font-weight:700; font-size:16px;">{{ "%.1f"|format(item.total_score) }}</td>
                         <td>
-                            <span class="score-bar score-volume" style="width: {{ (item.volume_score / 10 * 50)|int }}px"></span>
+                            <span class="score-bar score-volume" style="width: {{ (item.volume_score / 10 * 40)|int }}px"></span>
                             {{ "%.1f"|format(item.volume_score) }}
                         </td>
                         <td>
-                            <span class="score-bar score-afterhour" style="width: {{ (item.after_hour_score / 10 * 50)|int }}px"></span>
-                            {{ "%.1f"|format(item.after_hour_score) }}
+                            <span class="score-bar score-tradingval" style="width: {{ (item.trading_value_score / 10 * 40)|int }}px"></span>
+                            {{ "%.1f"|format(item.trading_value_score) }}
                         </td>
                         <td>
-                            <span class="score-bar score-fluctuation" style="width: {{ (item.fluctuation_score / 10 * 50)|int }}px"></span>
-                            {{ "%.1f"|format(item.fluctuation_score) }}
+                            <span class="score-bar score-turnover" style="width: {{ (item.turnover_score / 10 * 40)|int }}px"></span>
+                            {{ "%.1f"|format(item.turnover_score) }}
+                        </td>
+                        <td>
+                            <span class="score-bar score-foreign" style="width: {{ (item.foreign_score / 10 * 40)|int }}px"></span>
+                            {{ "%.1f"|format(item.foreign_score) }}
+                        </td>
+                        <td>
+                            <span class="score-bar score-institution" style="width: {{ (item.institution_score / 10 * 40)|int }}px"></span>
+                            {{ "%.1f"|format(item.institution_score) }}
+                        </td>
+                        <td>
+                            <span class="score-bar score-strength" style="width: {{ (item.strength_score / 10 * 40)|int }}px"></span>
+                            {{ "%.1f"|format(item.strength_score) }}
                         </td>
                         <td>
                             <button class="buy-btn" onclick="openBuyModal('{{ item.stock_code }}', '{{ item.stock_name }}')">매수</button>
@@ -679,8 +646,11 @@
                     else if (col === 'rank') { va = parseFloat(a.dataset.rank); vb = parseFloat(b.dataset.rank); }
                     else if (col === 'total') { va = parseFloat(a.dataset.total); vb = parseFloat(b.dataset.total); }
                     else if (col === 'volume') { va = parseFloat(a.dataset.volume); vb = parseFloat(b.dataset.volume); }
-                    else if (col === 'afterhour') { va = parseFloat(a.dataset.afterhour); vb = parseFloat(b.dataset.afterhour); }
-                    else if (col === 'fluctuation') { va = parseFloat(a.dataset.fluctuation); vb = parseFloat(b.dataset.fluctuation); }
+                    else if (col === 'tradingval') { va = parseFloat(a.dataset.tradingval); vb = parseFloat(b.dataset.tradingval); }
+                    else if (col === 'turnover') { va = parseFloat(a.dataset.turnover); vb = parseFloat(b.dataset.turnover); }
+                    else if (col === 'foreign') { va = parseFloat(a.dataset.foreign); vb = parseFloat(b.dataset.foreign); }
+                    else if (col === 'institution') { va = parseFloat(a.dataset.institution); vb = parseFloat(b.dataset.institution); }
+                    else if (col === 'strength') { va = parseFloat(a.dataset.strength); vb = parseFloat(b.dataset.strength); }
                     else if (col === 'price') { va = parseFloat(a.dataset.price); vb = parseFloat(b.dataset.price); }
                     else if (col === 'change') { va = parseFloat(a.dataset.change); vb = parseFloat(b.dataset.change); }
 
@@ -809,5 +779,6 @@
         });
     })();
     </script>
+    {% include '_quick_trade.html' %}
 </body>
 </html>

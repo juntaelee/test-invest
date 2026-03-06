@@ -1,0 +1,458 @@
+<!-- 빠른 매수/예약 - 공통 컴포넌트 (슬라이드 패널) -->
+<style>
+    .quick-trade-btns {
+        display: inline-flex;
+        gap: 6px;
+        margin-left: 12px;
+        vertical-align: middle;
+    }
+    .quick-buy-btn {
+        background: #238636;
+        color: #fff;
+        border: none;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+    .quick-buy-btn:hover { background: #2ea043; }
+    .quick-reserve-btn {
+        background: #1f6feb;
+        color: #fff;
+        border: none;
+        padding: 5px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        font-weight: 500;
+    }
+    .quick-reserve-btn:hover { background: #388bfd; }
+
+    /* 슬라이드 패널 오버레이 */
+    .qt-overlay {
+        display: none;
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 200;
+    }
+    .qt-overlay.active { display: block; }
+
+    /* 슬라이드 패널 */
+    .qt-panel {
+        position: fixed;
+        top: 0;
+        right: -420px;
+        width: 400px;
+        max-width: 90vw;
+        height: 100vh;
+        background: #161b22;
+        border-left: 1px solid #30363d;
+        z-index: 201;
+        transition: right 0.3s ease;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+    .qt-panel.active { right: 0; }
+
+    .qt-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px 24px 16px;
+        border-bottom: 1px solid #30363d;
+    }
+    .qt-panel-header h3 {
+        font-size: 16px;
+        color: #c9d1d9;
+        margin: 0;
+    }
+    .qt-panel-close {
+        background: none;
+        border: none;
+        color: #8b949e;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 6px;
+        line-height: 1;
+    }
+    .qt-panel-close:hover { background: #21262d; color: #e1e4e8; }
+
+    .qt-panel-body {
+        padding: 20px 24px;
+        flex: 1;
+    }
+    .qt-panel-body label {
+        display: block;
+        font-size: 13px;
+        color: #8b949e;
+        margin-bottom: 4px;
+        margin-top: 16px;
+    }
+    .qt-panel-body label:first-child { margin-top: 0; }
+    .qt-panel-body input, .qt-panel-body select {
+        width: 100%;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 10px 12px;
+        color: #e1e4e8;
+        font-size: 14px;
+        outline: none;
+    }
+    .qt-panel-body input:focus, .qt-panel-body select:focus { border-color: #58a6ff; }
+
+    .qt-panel-footer {
+        padding: 16px 24px 24px;
+        border-top: 1px solid #30363d;
+        display: flex;
+        gap: 8px;
+    }
+    .qt-panel-footer button {
+        flex: 1;
+        padding: 10px 16px;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+    }
+    .qt-btn-cancel {
+        background: #21262d;
+        color: #c9d1d9;
+        border: 1px solid #30363d !important;
+    }
+    .qt-btn-cancel:hover { background: #30363d; }
+    .qt-btn-confirm-buy {
+        background: #238636;
+        color: #fff;
+    }
+    .qt-btn-confirm-buy:hover { background: #2ea043; }
+    .qt-btn-confirm-buy:disabled { background: #30363d; color: #484f58; cursor: not-allowed; }
+    .qt-btn-confirm-reserve {
+        background: #1f6feb;
+        color: #fff;
+    }
+    .qt-btn-confirm-reserve:hover { background: #388bfd; }
+    .qt-btn-confirm-reserve:disabled { background: #30363d; color: #484f58; cursor: not-allowed; }
+
+    /* 종목 조회 영역 */
+    .qt-code-row {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+    .qt-code-row input { flex: 1; }
+    .qt-code-row button {
+        background: #30363d;
+        color: #c9d1d9;
+        border: 1px solid #484f58;
+        padding: 10px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .qt-code-row button:hover { background: #484f58; }
+
+    /* 종목 정보 카드 */
+    .qt-stock-card {
+        margin-top: 8px;
+        padding: 12px 14px;
+        background: #0d1117;
+        border: 1px solid #30363d;
+        border-radius: 8px;
+        min-height: 24px;
+    }
+    .qt-stock-card.empty { border-style: dashed; }
+    .qt-stock-card.error { border-color: #f85149; }
+    .qt-stock-card .qt-stock-name {
+        font-size: 15px;
+        font-weight: 600;
+        color: #e1e4e8;
+    }
+    .qt-stock-card .qt-stock-price-row {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        margin-top: 4px;
+    }
+    .qt-stock-card .qt-stock-price {
+        font-size: 20px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    .qt-stock-card .qt-stock-change {
+        font-size: 13px;
+        font-weight: 600;
+    }
+    .qt-stock-card .qt-stock-change.up { color: #f85149; }
+    .qt-stock-card .qt-stock-change.down { color: #58a6ff; }
+    .qt-stock-card .qt-stock-change.flat { color: #8b949e; }
+    .qt-stock-card .qt-stock-empty {
+        font-size: 13px;
+        color: #484f58;
+    }
+    .qt-stock-card .qt-stock-error {
+        font-size: 13px;
+        color: #f85149;
+    }
+
+    @media (max-width: 480px) {
+        .qt-panel { width: 100vw; right: -100vw; }
+    }
+</style>
+
+<!-- 오버레이 -->
+<div class="qt-overlay" id="qt-overlay" onclick="qtCloseAll()"></div>
+
+<!-- 빠른 매수 패널 -->
+<div class="qt-panel" id="qt-buy-panel">
+    <div class="qt-panel-header">
+        <h3>빠른 매수</h3>
+        <button class="qt-panel-close" onclick="qtCloseBuy()">&times;</button>
+    </div>
+    <div class="qt-panel-body">
+        <label>종목코드</label>
+        <div class="qt-code-row">
+            <input type="text" id="qt-buy-code" placeholder="예: 005930" maxlength="6"
+                   oninput="qtLookupStock(this.value, 'qt-buy-stock-card', 'qt-buy-name')">
+            <button type="button" onclick="qtLookupStock(document.getElementById('qt-buy-code').value, 'qt-buy-stock-card', 'qt-buy-name')">조회</button>
+        </div>
+        <div class="qt-stock-card empty" id="qt-buy-stock-card">
+            <span class="qt-stock-empty">종목코드 6자리를 입력하세요</span>
+        </div>
+        <input type="hidden" id="qt-buy-name">
+        <label>수량</label>
+        <input type="number" id="qt-buy-qty" value="1" min="1">
+        <label>익절 %</label>
+        <input type="number" id="qt-buy-tp" value="4.0" step="0.5">
+        <label>손절 %</label>
+        <input type="number" id="qt-buy-sl" value="-3.0" step="0.5">
+    </div>
+    <div class="qt-panel-footer">
+        <button class="qt-btn-cancel" onclick="qtCloseBuy()">취소</button>
+        <button class="qt-btn-confirm-buy" id="qt-buy-confirm" onclick="qtSubmitBuy()">매수</button>
+    </div>
+</div>
+
+<!-- 빠른 예약 패널 -->
+<div class="qt-panel" id="qt-reserve-panel">
+    <div class="qt-panel-header">
+        <h3>예약 매수</h3>
+        <button class="qt-panel-close" onclick="qtCloseReserve()">&times;</button>
+    </div>
+    <div class="qt-panel-body">
+        <label>종목코드</label>
+        <div class="qt-code-row">
+            <input type="text" id="qt-res-code" placeholder="예: 005930" maxlength="6"
+                   oninput="qtLookupStock(this.value, 'qt-res-stock-card', 'qt-res-name')">
+            <button type="button" onclick="qtLookupStock(document.getElementById('qt-res-code').value, 'qt-res-stock-card', 'qt-res-name')">조회</button>
+        </div>
+        <div class="qt-stock-card empty" id="qt-res-stock-card">
+            <span class="qt-stock-empty">종목코드 6자리를 입력하세요</span>
+        </div>
+        <input type="hidden" id="qt-res-name">
+        <label>예약 타입</label>
+        <select id="qt-res-type">
+            <option value="pre_market">08:30 장전 시간외</option>
+            <option value="market_open">09:00 장개시 시장가</option>
+        </select>
+        <label>수량</label>
+        <input type="number" id="qt-res-qty" value="1" min="1">
+        <label>익절 %</label>
+        <input type="number" id="qt-res-tp" value="4.0" step="0.5">
+        <label>손절 %</label>
+        <input type="number" id="qt-res-sl" value="-3.0" step="0.5">
+    </div>
+    <div class="qt-panel-footer">
+        <button class="qt-btn-cancel" onclick="qtCloseReserve()">취소</button>
+        <button class="qt-btn-confirm-reserve" id="qt-res-confirm" onclick="qtSubmitReserve()">예약</button>
+    </div>
+</div>
+
+<script>
+// 종목 조회 (이름 + 현재가)
+var _qtLookupTimer = null;
+function qtLookupStock(code, cardId, nameId) {
+    clearTimeout(_qtLookupTimer);
+    var card = document.getElementById(cardId);
+    var nameInput = document.getElementById(nameId);
+    code = code.trim();
+    if (code.length !== 6) {
+        card.className = 'qt-stock-card empty';
+        card.innerHTML = '<span class="qt-stock-empty">종목코드 6자리를 입력하세요</span>';
+        nameInput.value = '';
+        return;
+    }
+    card.className = 'qt-stock-card empty';
+    card.innerHTML = '<span class="qt-stock-empty">조회 중...</span>';
+    _qtLookupTimer = setTimeout(function() {
+        fetch('/api/stock-name/' + code)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                nameInput.value = data.stock_name;
+                var html = '<div class="qt-stock-name">' + data.stock_name + '</div>';
+                if (data.current_price) {
+                    var price = Number(data.current_price).toLocaleString();
+                    var changeRate = data.change_rate || 0;
+                    var changeAmt = data.change_amount || 0;
+                    var cls = changeRate > 0 ? 'up' : (changeRate < 0 ? 'down' : 'flat');
+                    var sign = changeRate > 0 ? '+' : '';
+                    html += '<div class="qt-stock-price-row">';
+                    html += '<span class="qt-stock-price ' + cls + '">' + price + '원</span>';
+                    html += '<span class="qt-stock-change ' + cls + '">' + sign + changeAmt.toLocaleString() + ' (' + sign + changeRate.toFixed(2) + '%)</span>';
+                    html += '</div>';
+                }
+                card.className = 'qt-stock-card';
+                card.innerHTML = html;
+            } else {
+                card.className = 'qt-stock-card error';
+                card.innerHTML = '<span class="qt-stock-error">종목을 찾을 수 없습니다</span>';
+                nameInput.value = '';
+            }
+        })
+        .catch(function() {
+            card.className = 'qt-stock-card error';
+            card.innerHTML = '<span class="qt-stock-error">조회 오류</span>';
+            nameInput.value = '';
+        });
+    }, 300);
+}
+
+// 패널 열기/닫기 공통
+function _qtOpenPanel(panelId) {
+    document.getElementById('qt-overlay').classList.add('active');
+    document.getElementById(panelId).classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+function _qtClosePanel(panelId) {
+    document.getElementById(panelId).classList.remove('active');
+    document.getElementById('qt-overlay').classList.remove('active');
+    document.body.style.overflow = '';
+}
+function qtCloseAll() {
+    document.getElementById('qt-buy-panel').classList.remove('active');
+    document.getElementById('qt-reserve-panel').classList.remove('active');
+    document.getElementById('qt-overlay').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// 빠른 매수
+function qtOpenBuy(code, name) {
+    if (code) {
+        document.getElementById('qt-buy-code').value = code;
+        document.getElementById('qt-buy-name').value = name || '';
+        qtLookupStock(code, 'qt-buy-stock-card', 'qt-buy-name');
+    } else {
+        document.getElementById('qt-buy-code').value = '';
+        document.getElementById('qt-buy-name').value = '';
+        var card = document.getElementById('qt-buy-stock-card');
+        card.className = 'qt-stock-card empty';
+        card.innerHTML = '<span class="qt-stock-empty">종목코드 6자리를 입력하세요</span>';
+    }
+    document.getElementById('qt-buy-qty').value = 1;
+    document.getElementById('qt-buy-tp').value = 4.0;
+    document.getElementById('qt-buy-sl').value = -3.0;
+    _qtOpenPanel('qt-buy-panel');
+    setTimeout(function() { document.getElementById('qt-buy-code').focus(); }, 350);
+}
+function qtCloseBuy() { _qtClosePanel('qt-buy-panel'); }
+
+function qtSubmitBuy() {
+    var btn = document.getElementById('qt-buy-confirm');
+    var code = document.getElementById('qt-buy-code').value.trim();
+    var name = document.getElementById('qt-buy-name').value.trim();
+    if (!code || code.length !== 6) { alert('종목코드 6자리를 입력하세요'); return; }
+    if (!name) { alert('종목명을 먼저 조회하세요'); return; }
+    btn.disabled = true;
+    btn.textContent = '주문 중...';
+    fetch('/api/buy', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            stock_code: code,
+            stock_name: name,
+            quantity: parseInt(document.getElementById('qt-buy-qty').value),
+            tp_pct: parseFloat(document.getElementById('qt-buy-tp').value),
+            sl_pct: parseFloat(document.getElementById('qt-buy-sl').value)
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) { alert('매수 완료: ' + name); }
+        else { alert('매수 실패: ' + data.message); }
+        qtCloseBuy();
+        btn.disabled = false; btn.textContent = '매수';
+    })
+    .catch(function(err) {
+        alert('요청 오류: ' + err);
+        btn.disabled = false; btn.textContent = '매수';
+    });
+}
+
+// 빠른 예약
+function qtOpenReserve(code, name) {
+    if (code) {
+        document.getElementById('qt-res-code').value = code;
+        document.getElementById('qt-res-name').value = name || '';
+        qtLookupStock(code, 'qt-res-stock-card', 'qt-res-name');
+    } else {
+        document.getElementById('qt-res-code').value = '';
+        document.getElementById('qt-res-name').value = '';
+        var card = document.getElementById('qt-res-stock-card');
+        card.className = 'qt-stock-card empty';
+        card.innerHTML = '<span class="qt-stock-empty">종목코드 6자리를 입력하세요</span>';
+    }
+    document.getElementById('qt-res-qty').value = 1;
+    document.getElementById('qt-res-tp').value = 4.0;
+    document.getElementById('qt-res-sl').value = -3.0;
+    _qtOpenPanel('qt-reserve-panel');
+    setTimeout(function() { document.getElementById('qt-res-code').focus(); }, 350);
+}
+function qtCloseReserve() { _qtClosePanel('qt-reserve-panel'); }
+
+function qtSubmitReserve() {
+    var btn = document.getElementById('qt-res-confirm');
+    var code = document.getElementById('qt-res-code').value.trim();
+    var name = document.getElementById('qt-res-name').value.trim();
+    if (!code || code.length !== 6) { alert('종목코드 6자리를 입력하세요'); return; }
+    if (!name) { alert('종목명을 먼저 조회하세요'); return; }
+    btn.disabled = true;
+    btn.textContent = '예약 중...';
+    var resType = document.getElementById('qt-res-type').value;
+    var labels = {pre_market: '08:30 시간외', market_open: '09:00 장개시'};
+    fetch('/api/pre-market-reservation', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            stock_code: code,
+            stock_name: name,
+            quantity: parseInt(document.getElementById('qt-res-qty').value),
+            tp_pct: parseFloat(document.getElementById('qt-res-tp').value),
+            sl_pct: parseFloat(document.getElementById('qt-res-sl').value),
+            reservation_type: resType
+        })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) { alert(labels[resType] + ' 예약 완료: ' + name); }
+        else { alert('예약 실패: ' + data.message); }
+        qtCloseReserve();
+        btn.disabled = false; btn.textContent = '예약';
+    })
+    .catch(function(err) {
+        alert('요청 오류: ' + err);
+        btn.disabled = false; btn.textContent = '예약';
+    });
+}
+
+// ESC 키로 닫기
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') qtCloseAll();
+});
+</script>
