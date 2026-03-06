@@ -493,6 +493,9 @@
     function closeEditModal() {
         document.getElementById('edit-modal').classList.remove('active');
     }
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeEditModal();
+    });
 
     function savePosition() {
         var code = document.getElementById('edit-stock-code').value;

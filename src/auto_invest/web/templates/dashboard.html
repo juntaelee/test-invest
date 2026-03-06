@@ -795,6 +795,9 @@
     document.getElementById('reservation-modal').addEventListener('click', function(e) {
         if (e.target === this) closeReservationModal();
     });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { closeBuyModal(); closeReservationModal(); }
+    });
 
     // 예약 모달 (시간외 / 장개시 공용)
     var _resTypeLabels = {pre_market: '08:30 시간외', market_open: '09:00 장개시'};

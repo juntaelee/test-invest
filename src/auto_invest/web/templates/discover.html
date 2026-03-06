@@ -767,6 +767,9 @@
     document.getElementById('reservation-modal').addEventListener('click', function(e) {
         if (e.target === this) closeReservationModal();
     });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { closeBuyModal(); closeReservationModal(); }
+    });
 
     // 새로고침 버튼 비활성화
     (function() {
