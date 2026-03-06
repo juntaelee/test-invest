@@ -28,6 +28,7 @@ from auto_invest.core.trading import (
 )
 from auto_invest.strategy.kr_etf import lookup_stock_name
 from auto_invest.strategy.recommender import RecommendationReport, run_recommendation
+from auto_invest.strategy.scanner import run_scanner
 from auto_invest.utils import cache
 
 logger = logging.getLogger(__name__)
@@ -241,6 +242,44 @@ async def api_recommend(top_n: int = 10, force_refresh: bool = False):
             for i, r in enumerate(report.recommendations, 1)
         ],
     }
+
+
+# ── 발굴 엔드포인트 ──────────────────────────────────────
+
+
+@app.get("/discover", response_class=HTMLResponse)
+async def discover_page(request: Request):
+    """중소형주 발굴 페이지."""
+    report = run_scanner(top_n=30)
+
+    kst = timezone(timedelta(hours=9))
+    cached_at_str = ""
+    if report.cached_at:
+        cached_at_str = datetime.fromtimestamp(report.cached_at, tz=kst).strftime(
+            "%Y-%m-%d %H:%M:%S KST"
+        )
+
+    return templates.TemplateResponse(
+        request,
+        "discover.html",
+        {
+            "timestamp": report.timestamp,
+            "cached_at": cached_at_str,
+            "volume_top": report.volume_top,
+            "after_hour_top": report.after_hour_top,
+            "fluctuation_top": report.fluctuation_top,
+            "combined": report.combined,
+        },
+    )
+
+
+@app.post("/discover/refresh")
+async def discover_refresh():
+    """발굴 캐시 무시하고 새로 조회."""
+    run_scanner(top_n=30, force_refresh=True)
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url="/discover", status_code=303)
 
 
 # ── 매매 엔드포인트 ──────────────────────────────────────
