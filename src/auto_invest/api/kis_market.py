@@ -154,10 +154,10 @@ def get_investor_trend(stock_code: str) -> dict:
         # 첫 번째 항목이 당일 데이터
         today = items[0]
         return {
-            "foreign_net_qty": int(today.get("frgn_ntby_qty", "0")),
-            "institution_net_qty": int(today.get("orgn_ntby_qty", "0")),
-            "foreign_net_value": int(today.get("frgn_ntby_tr_pbmn", "0")),
-            "institution_net_value": int(today.get("orgn_ntby_tr_pbmn", "0")),
+            "foreign_net_qty": int(today.get("frgn_ntby_qty") or "0"),
+            "institution_net_qty": int(today.get("orgn_ntby_qty") or "0"),
+            "foreign_net_value": int(today.get("frgn_ntby_tr_pbmn") or "0"),
+            "institution_net_value": int(today.get("orgn_ntby_tr_pbmn") or "0"),
         }
 
     except requests.RequestException as e:
