@@ -204,19 +204,42 @@ def _build_context(report: RecommendationReport) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
-    """대시보드 메인 페이지."""
+    """대시보드 메인 페이지 (스켈레톤)."""
+    return templates.TemplateResponse(request, "dashboard.html", {})
+
+
+@app.get("/api/dashboard-data")
+async def api_dashboard_data():
+    """대시보드 데이터 JSON API."""
     report = run_recommendation(top_n=100)
     ctx = _build_context(report)
-    return templates.TemplateResponse(request, "dashboard.html", ctx)
+    return {
+        "timestamp": ctx["timestamp"],
+        "cache_info": ctx["cache_info"],
+        "index_changes": ctx["index_changes"],
+        "sector_changes": ctx["sector_changes"],
+        "theme_changes": ctx["theme_changes"],
+        "keyword_counts": ctx["keyword_counts"],
+        "headline_count": ctx["headline_count"],
+        "recommendations": [
+            {
+                "code": r.code,
+                "name": r.name,
+                "total_score": r.total_score,
+                "sector_score": r.sector_score,
+                "theme_score": r.theme_score,
+                "news_score": r.news_score,
+            }
+            for r in report.recommendations
+        ],
+    }
 
 
 @app.post("/refresh")
 async def refresh():
-    """캐시 무시하고 새로 조회 후 / 로 리다이렉트."""
+    """캐시 무시하고 새로 조회."""
     run_recommendation(top_n=100, force_refresh=True)
-    from fastapi.responses import RedirectResponse
-
-    return RedirectResponse(url="/", status_code=303)
+    return {"success": True}
 
 
 @app.get("/api/recommend")
@@ -250,7 +273,13 @@ async def api_recommend(top_n: int = 10, force_refresh: bool = False):
 
 @app.get("/discover", response_class=HTMLResponse)
 async def discover_page(request: Request):
-    """중소형주 발굴 페이지."""
+    """중소형주 발굴 페이지 (스켈레톤)."""
+    return templates.TemplateResponse(request, "discover.html", {})
+
+
+@app.get("/api/discover-data")
+async def api_discover_data():
+    """발굴 데이터 JSON API."""
     report = run_scanner(top_n=30)
 
     kst = timezone(timedelta(hours=9))
@@ -260,38 +289,29 @@ async def discover_page(request: Request):
             "%Y-%m-%d %H:%M:%S KST"
         )
 
-    return templates.TemplateResponse(
-        request,
-        "discover.html",
-        {
-            "timestamp": report.timestamp,
-            "cached_at": cached_at_str,
-            "volume_top": report.volume_top,
-            "trading_value_top": report.trading_value_top,
-            "fluctuation_top": report.fluctuation_top,
-            "turnover_top": report.turnover_top,
-            "foreign_top": report.foreign_top,
-            "institution_top": report.institution_top,
-            "strength_top": report.strength_top,
-            "combined": report.combined,
-        },
-    )
+    result = report.to_dict()
+    result["cached_at"] = cached_at_str
+    return result
 
 
 @app.post("/discover/refresh")
 async def discover_refresh():
     """발굴 캐시 무시하고 새로 조회."""
     run_scanner(top_n=30, force_refresh=True)
-    from fastapi.responses import RedirectResponse
-
-    return RedirectResponse(url="/discover", status_code=303)
+    return {"success": True}
 
 
 # ── 매매 엔드포인트 ──────────────────────────────────────
 
 @app.get("/portfolio", response_class=HTMLResponse)
 async def portfolio_page(request: Request):
-    """포트폴리오 페이지."""
+    """포트폴리오 페이지 (스켈레톤)."""
+    return templates.TemplateResponse(request, "portfolio.html", {})
+
+
+@app.get("/api/portfolio-data")
+async def api_portfolio_data():
+    """포트폴리오 데이터 JSON API."""
     error = None
     portfolio = []
     orphan_positions = []
@@ -305,16 +325,12 @@ async def portfolio_page(request: Request):
         error = str(e)
         logger.error("포트폴리오 조회 실패: %s", e)
     pre_market_reservations = get_pending_pre_market_reservations()
-    return templates.TemplateResponse(
-        request,
-        "portfolio.html",
-        {
-            "portfolio": portfolio,
-            "orphan_positions": orphan_positions,
-            "pre_market_reservations": pre_market_reservations,
-            "error": error,
-        },
-    )
+    return {
+        "portfolio": portfolio,
+        "orphan_positions": orphan_positions,
+        "pre_market_reservations": pre_market_reservations,
+        "error": error,
+    }
 
 
 @app.post("/api/buy")

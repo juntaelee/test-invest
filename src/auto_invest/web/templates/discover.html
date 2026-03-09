@@ -73,12 +73,6 @@
         }
 
         /* 카드 */
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-            gap: 20px;
-            margin-bottom: 24px;
-        }
         .grid-3 {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -348,6 +342,27 @@
         /* 포맷 헬퍼 */
         .num-format { font-variant-numeric: tabular-nums; }
 
+        /* 로딩 */
+        .loading-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 80px 20px;
+            color: #8b949e;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #30363d;
+            border-top: 3px solid #58a6ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 14px; }
+
         /* 반응형 */
         @media (max-width: 1024px) {
             .grid-3 { grid-template-columns: 1fr; }
@@ -361,7 +376,6 @@
             }
             header > div:last-child { width: 100%; text-align: left; }
             .container { padding: 12px; }
-            .grid { grid-template-columns: 1fr; gap: 12px; }
             .card { padding: 14px; }
             .rec-table th, .rec-table td { padding: 8px 6px; font-size: 13px; }
             #search-input { width: 100% !important; margin-top: 8px; }
@@ -376,7 +390,7 @@
     <header>
         <div>
             <h1>Auto Invest</h1>
-            <span class="meta">중소형주 시그널 발굴 | {{ timestamp }}</span>
+            <span class="meta">중소형주 시그널 발굴 | <span id="header-timestamp">로딩 중...</span></span>
             <nav class="nav">
                 <a href="/">추천</a>
                 <a href="/discover" class="active">발굴</a>
@@ -391,163 +405,14 @@
             <form id="refresh-form" action="/discover/refresh" method="post" style="display:inline;">
                 <button type="submit" id="refresh-btn" class="refresh-btn">새로고침</button>
             </form>
-            {% if cached_at %}
-            <div style="font-size: 11px; color: #8b949e; margin-top: 6px;">
-                캐시: {{ cached_at }} <span style="color:#58a6ff">(TTL 1시간)</span>
-            </div>
-            {% endif %}
+            <div id="cache-info" style="font-size: 11px; color: #8b949e; margin-top: 6px;"></div>
         </div>
     </header>
 
-    <div class="container">
-        <!-- 시그널 카드 6개 (한 줄 3개) -->
-        <div class="grid-3">
-            {% macro signal_card(title, icon, color, items, value_label, value_field, value_format) %}
-            <div class="card">
-                <h2><span class="card-icon" style="color:{{ color }};">{{ icon|safe }}</span> {{ title }}</h2>
-                {% if items %}
-                <div class="mini-table-wrap">
-                <table class="mini-table">
-                    <thead>
-                        <tr>
-                            <th style="width:30px;">#</th>
-                            <th>종목</th>
-                            <th style="text-align:right;">{{ value_label }}</th>
-                            <th style="text-align:right;">등락</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for item in items %}
-                        <tr>
-                            <td><span class="mini-rank {% if loop.index == 1 %}mini-rank-1{% elif loop.index == 2 %}mini-rank-2{% elif loop.index == 3 %}mini-rank-3{% endif %}">{{ loop.index }}</span></td>
-                            <td>
-                                <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ item.stock_code }}" target="_blank" rel="noopener">
-                                    {{ item.stock_name }}
-                                </a>
-                            </td>
-                            <td style="text-align:right; font-weight:600; color:{{ color }};" class="num-format">
-                                {% if value_format == 'pct' %}{{ "%.0f"|format(item[value_field]) }}%
-                                {% elif value_format == 'pct2' %}{{ "%+.2f"|format(item[value_field]) }}%
-                                {% elif value_format == 'billions' %}{% set v = item[value_field] / 100000000 %}{{ "%.0f"|format(v) }}억
-                                {% elif value_format == 'comma' %}{{ "{:,}".format(item[value_field]) }}
-                                {% endif %}
-                            </td>
-                            <td style="text-align:right;" class="num-format {% if item.change_rate > 0 %}up{% elif item.change_rate < 0 %}down{% else %}flat{% endif %}">
-                                {{ "%+.2f"|format(item.change_rate) }}%
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                </div>
-                {% else %}
-                <div class="empty-state">데이터 없음</div>
-                {% endif %}
-            </div>
-            {% endmacro %}
-
-            {{ signal_card("거래량 폭발", "&#9650;", "#f0883e", volume_top, "증가율", "volume_rate", "pct") }}
-            {{ signal_card("거래대금 TOP", "&#9650;", "#58a6ff", trading_value_top, "거래대금", "trading_value", "billions") }}
-            {{ signal_card("거래 회전율", "&#9679;", "#d2a8ff", turnover_top, "회전율", "turnover_rate", "pct") }}
-            {{ signal_card("외국인 순매수", "&#9650;", "#f778ba", foreign_top, "순매수", "foreign_net_qty", "comma") }}
-            {{ signal_card("기관 순매수", "&#9650;", "#ffd700", institution_top, "순매수", "institution_net_qty", "comma") }}
-            {{ signal_card("체결강도", "&#9889;", "#ff6b6b", strength_top, "체결강도", "trade_strength", "pct") }}
-        </div>
-
-        <!-- 종합 발굴 테이블 -->
-        <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h2 style="margin-bottom:0;">종합 발굴 <span id="rec-count">{{ combined|length }}</span>개</h2>
-                <input type="text" id="search-input" placeholder="종목명 또는 코드 검색..."
-                    style="background:#0d1117; border:1px solid #30363d; border-radius:6px;
-                           padding:6px 12px; color:#e1e4e8; font-size:13px; width:220px;
-                           outline:none;"
-                    onfocus="this.style.borderColor='#58a6ff'"
-                    onblur="this.style.borderColor='#30363d'">
-            </div>
-            {% if combined %}
-            <div class="table-wrap">
-            <table class="rec-table" id="rec-table">
-                <thead>
-                    <tr>
-                        <th style="width:45px;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>
-                        <th data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>
-                        <th style="width:65px;" data-sort="price" data-type="num">현재가 <span class="sort-icon"></span></th>
-                        <th style="width:60px;" data-sort="change" data-type="num">등락 <span class="sort-icon"></span></th>
-                        <th style="width:65px;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>
-                        <th style="width:90px;" data-sort="volume" data-type="num">거래량 <span class="sort-icon"></span></th>
-                        <th style="width:90px;" data-sort="tradingval" data-type="num">거래대금 <span class="sort-icon"></span></th>
-                        <th style="width:90px;" data-sort="turnover" data-type="num">회전율 <span class="sort-icon"></span></th>
-                        <th style="width:90px;" data-sort="foreign" data-type="num">외국인 <span class="sort-icon"></span></th>
-                        <th style="width:90px;" data-sort="institution" data-type="num">기관 <span class="sort-icon"></span></th>
-                        <th style="width:90px;" data-sort="strength" data-type="num">체결강도 <span class="sort-icon"></span></th>
-                        <th style="width:55px;">매수</th>
-                        <th style="width:130px;">예약매수</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in combined %}
-                    <tr data-name="{{ item.stock_name }}" data-code="{{ item.stock_code }}"
-                        data-rank="{{ loop.index }}" data-total="{{ item.total_score }}"
-                        data-volume="{{ item.volume_score }}" data-tradingval="{{ item.trading_value_score }}"
-                        data-turnover="{{ item.turnover_score }}"
-                        data-foreign="{{ item.foreign_score }}" data-institution="{{ item.institution_score }}" data-strength="{{ item.strength_score }}"
-                        data-price="{{ item.current_price }}" data-change="{{ item.change_rate }}">
-                        <td>
-                            <span class="rank {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
-                                {{ loop.index }}
-                            </span>
-                        </td>
-                        <td>
-                            <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ item.stock_code }}" target="_blank" rel="noopener">
-                                <span class="stock-name">{{ item.stock_name }}</span>
-                                <span class="stock-code">{{ item.stock_code }}</span>
-                            </a>
-                        </td>
-                        <td class="num-format" style="text-align:right;">{{ "{:,}".format(item.current_price) }}</td>
-                        <td class="num-format {% if item.change_rate > 0 %}up{% elif item.change_rate < 0 %}down{% else %}flat{% endif %}" style="text-align:right;">
-                            {{ "%+.2f"|format(item.change_rate) }}%
-                        </td>
-                        <td style="font-weight:700; font-size:16px;">{{ "%.1f"|format(item.total_score) }}</td>
-                        <td>
-                            <span class="score-bar score-volume" style="width: {{ (item.volume_score / 10 * 40)|int }}px"></span>
-                            {{ "%.1f"|format(item.volume_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-tradingval" style="width: {{ (item.trading_value_score / 10 * 40)|int }}px"></span>
-                            {{ "%.1f"|format(item.trading_value_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-turnover" style="width: {{ (item.turnover_score / 10 * 40)|int }}px"></span>
-                            {{ "%.1f"|format(item.turnover_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-foreign" style="width: {{ (item.foreign_score / 10 * 40)|int }}px"></span>
-                            {{ "%.1f"|format(item.foreign_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-institution" style="width: {{ (item.institution_score / 10 * 40)|int }}px"></span>
-                            {{ "%.1f"|format(item.institution_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-strength" style="width: {{ (item.strength_score / 10 * 40)|int }}px"></span>
-                            {{ "%.1f"|format(item.strength_score) }}
-                        </td>
-                        <td>
-                            <button class="buy-btn" onclick="openBuyModal('{{ item.stock_code }}', '{{ item.stock_name }}')">매수</button>
-                        </td>
-                        <td style="white-space:nowrap;">
-                            <button class="premarket-btn" onclick="openReservationModal('{{ item.stock_code }}', '{{ item.stock_name }}', 'pre_market')" title="08:30 장전 시간외">08:30</button>
-                            <button class="premarket-btn" style="background:#238636;" onclick="openReservationModal('{{ item.stock_code }}', '{{ item.stock_name }}', 'market_open')" title="09:00 장개시 시장가">09:00</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
-            {% else %}
-            <div class="empty-state">발굴된 종목이 없습니다. 장 마감 후 데이터가 갱신됩니다.</div>
-            {% endif %}
+    <div class="container" id="main-content">
+        <div class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">발굴 데이터를 불러오는 중...</div>
         </div>
     </div>
 
@@ -595,7 +460,165 @@
     </footer>
 
     <script>
-    (function() {
+    // ── 유틸리티 ──
+    function _cc(v) { return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
+    function _pct(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; }
+    function _esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function _fmtNum(n) { return Number(n).toLocaleString(); }
+
+    // ── 시그널 카드 설정 ──
+    var SIGNAL_CARDS = [
+        { key: 'volume_top', title: '거래량 폭발', icon: '&#9650;', color: '#f0883e', valLabel: '증가율', valField: 'volume_rate', fmt: 'pct' },
+        { key: 'trading_value_top', title: '거래대금 TOP', icon: '&#9650;', color: '#58a6ff', valLabel: '거래대금', valField: 'trading_value', fmt: 'billions' },
+        { key: 'turnover_top', title: '거래 회전율', icon: '&#9679;', color: '#d2a8ff', valLabel: '회전율', valField: 'turnover_rate', fmt: 'pct' },
+        { key: 'foreign_top', title: '외국인 순매수', icon: '&#9650;', color: '#f778ba', valLabel: '순매수', valField: 'foreign_net_qty', fmt: 'comma' },
+        { key: 'institution_top', title: '기관 순매수', icon: '&#9650;', color: '#ffd700', valLabel: '순매수', valField: 'institution_net_qty', fmt: 'comma' },
+        { key: 'strength_top', title: '체결강도', icon: '&#9889;', color: '#ff6b6b', valLabel: '체결강도', valField: 'trade_strength', fmt: 'pct' },
+    ];
+
+    function _fmtVal(v, fmt) {
+        if (fmt === 'pct') return Math.round(v) + '%';
+        if (fmt === 'pct2') return _pct(v);
+        if (fmt === 'billions') return Math.round(v / 100000000) + '억';
+        if (fmt === 'comma') return _fmtNum(v);
+        return String(v);
+    }
+
+    // ── 데이터 로딩 ──
+    var _isLoading = false;
+
+    function _loadData() {
+        if (_isLoading) return;
+        _isLoading = true;
+        var btn = document.getElementById('refresh-btn');
+        btn.disabled = true;
+
+        fetch('/api/discover-data')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('header-timestamp').textContent = data.timestamp;
+                if (data.cached_at) {
+                    document.getElementById('cache-info').innerHTML =
+                        '캐시: ' + data.cached_at + ' <span style="color:#58a6ff">(TTL 1시간)</span>';
+                }
+                document.getElementById('main-content').innerHTML = _renderContent(data);
+                _initTableSort();
+            })
+            .catch(function(err) {
+                document.getElementById('main-content').innerHTML =
+                    '<div class="loading-overlay"><div class="loading-text" style="color:#f85149;">데이터 로딩 실패: ' + err.message + '</div></div>';
+            })
+            .finally(function() {
+                _isLoading = false;
+                btn.disabled = false;
+                btn.textContent = '새로고침';
+            });
+    }
+
+    _loadData();
+
+    function _renderContent(data) {
+        var html = '';
+
+        // 시그널 카드 6개
+        html += '<div class="grid-3">';
+        SIGNAL_CARDS.forEach(function(card) {
+            var items = data[card.key] || [];
+            html += '<div class="card">';
+            html += '<h2><span class="card-icon" style="color:' + card.color + ';">' + card.icon + '</span> ' + card.title + '</h2>';
+            if (items.length) {
+                html += '<div class="mini-table-wrap"><table class="mini-table"><thead><tr>';
+                html += '<th style="width:30px;">#</th><th>종목</th>';
+                html += '<th style="text-align:right;">' + card.valLabel + '</th>';
+                html += '<th style="text-align:right;">등락</th>';
+                html += '</tr></thead><tbody>';
+                items.forEach(function(item, i) {
+                    var rank = i + 1;
+                    var rc = rank <= 3 ? ' mini-rank-' + rank : '';
+                    html += '<tr>';
+                    html += '<td><span class="mini-rank' + rc + '">' + rank + '</span></td>';
+                    html += '<td><a class="stock-link" href="https://finance.naver.com/item/main.naver?code=' + _esc(item.stock_code) + '" target="_blank" rel="noopener">' + _esc(item.stock_name) + '</a></td>';
+                    html += '<td style="text-align:right; font-weight:600; color:' + card.color + ';" class="num-format">' + _fmtVal(item[card.valField], card.fmt) + '</td>';
+                    html += '<td style="text-align:right;" class="num-format ' + _cc(item.change_rate) + '">' + _pct(item.change_rate) + '</td>';
+                    html += '</tr>';
+                });
+                html += '</tbody></table></div>';
+            } else {
+                html += '<div class="empty-state">데이터 없음</div>';
+            }
+            html += '</div>';
+        });
+        html += '</div>';
+
+        // 종합 발굴 테이블
+        var combined = data.combined || [];
+        html += '<div class="card">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+        html += '<h2 style="margin-bottom:0;">종합 발굴 <span id="rec-count">' + combined.length + '</span>개</h2>';
+        html += '<input type="text" id="search-input" placeholder="종목명 또는 코드 검색..." '
+              + 'style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:6px 12px; color:#e1e4e8; font-size:13px; width:220px; outline:none;" '
+              + 'onfocus="this.style.borderColor=\'#58a6ff\'" onblur="this.style.borderColor=\'#30363d\'">';
+        html += '</div>';
+
+        if (combined.length) {
+            html += '<div class="table-wrap"><table class="rec-table" id="rec-table"><thead><tr>';
+            html += '<th style="width:45px;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>';
+            html += '<th data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>';
+            html += '<th style="width:65px;" data-sort="price" data-type="num">현재가 <span class="sort-icon"></span></th>';
+            html += '<th style="width:60px;" data-sort="change" data-type="num">등락 <span class="sort-icon"></span></th>';
+            html += '<th style="width:65px;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="volume" data-type="num">거래량 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="tradingval" data-type="num">거래대금 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="turnover" data-type="num">회전율 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="foreign" data-type="num">외국인 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="institution" data-type="num">기관 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="strength" data-type="num">체결강도 <span class="sort-icon"></span></th>';
+            html += '<th style="width:55px;">매수</th>';
+            html += '<th style="width:130px;">예약매수</th>';
+            html += '</tr></thead><tbody>';
+
+            combined.forEach(function(item, i) {
+                var rank = i + 1;
+                var rc = rank <= 3 ? 'rank-' + rank : 'rank-other';
+                html += '<tr data-name="' + _esc(item.stock_name) + '" data-code="' + _esc(item.stock_code) + '"'
+                      + ' data-rank="' + rank + '" data-total="' + item.total_score + '"'
+                      + ' data-volume="' + item.volume_score + '" data-tradingval="' + item.trading_value_score + '"'
+                      + ' data-turnover="' + item.turnover_score + '"'
+                      + ' data-foreign="' + item.foreign_score + '" data-institution="' + item.institution_score + '"'
+                      + ' data-strength="' + item.strength_score + '"'
+                      + ' data-price="' + item.current_price + '" data-change="' + item.change_rate + '">';
+                html += '<td><span class="rank ' + rc + '">' + rank + '</span></td>';
+                html += '<td><a class="stock-link" href="https://finance.naver.com/item/main.naver?code=' + _esc(item.stock_code) + '" target="_blank" rel="noopener">'
+                      + '<span class="stock-name">' + _esc(item.stock_name) + '</span>'
+                      + '<span class="stock-code">' + _esc(item.stock_code) + '</span></a></td>';
+                html += '<td class="num-format" style="text-align:right;">' + _fmtNum(item.current_price) + '</td>';
+                html += '<td class="num-format ' + _cc(item.change_rate) + '" style="text-align:right;">' + _pct(item.change_rate) + '</td>';
+                html += '<td style="font-weight:700; font-size:16px;">' + item.total_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-volume" style="width:' + Math.round(item.volume_score / 10 * 40) + 'px"></span>' + item.volume_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-tradingval" style="width:' + Math.round(item.trading_value_score / 10 * 40) + 'px"></span>' + item.trading_value_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-turnover" style="width:' + Math.round(item.turnover_score / 10 * 40) + 'px"></span>' + item.turnover_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-foreign" style="width:' + Math.round(item.foreign_score / 10 * 40) + 'px"></span>' + item.foreign_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-institution" style="width:' + Math.round(item.institution_score / 10 * 40) + 'px"></span>' + item.institution_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-strength" style="width:' + Math.round(item.strength_score / 10 * 40) + 'px"></span>' + item.strength_score.toFixed(1) + '</td>';
+                html += '<td><button class="buy-btn" onclick="openBuyModal(\'' + _esc(item.stock_code) + '\', \'' + _esc(item.stock_name) + '\')">매수</button></td>';
+                html += '<td style="white-space:nowrap;">'
+                      + '<button class="premarket-btn" onclick="openReservationModal(\'' + _esc(item.stock_code) + '\', \'' + _esc(item.stock_name) + '\', \'pre_market\')" title="08:30 장전 시간외">08:30</button> '
+                      + '<button class="premarket-btn" style="background:#238636;" onclick="openReservationModal(\'' + _esc(item.stock_code) + '\', \'' + _esc(item.stock_name) + '\', \'market_open\')" title="09:00 장개시 시장가">09:00</button>'
+                      + '</td>';
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+        } else {
+            html += '<div class="empty-state">발굴된 종목이 없습니다. 장 마감 후 데이터가 갱신됩니다.</div>';
+        }
+        html += '</div>';
+
+        return html;
+    }
+
+    // ── 테이블 정렬 & 검색 초기화 ──
+    function _initTableSort() {
         var table = document.getElementById('rec-table');
         if (!table) return;
         var tbody = table.querySelector('tbody');
@@ -605,7 +628,6 @@
         var currentSort = 'rank';
         var currentDir = 'asc';
 
-        // 검색
         searchInput.addEventListener('input', function() {
             var q = this.value.toLowerCase();
             var visible = 0;
@@ -619,7 +641,6 @@
             countEl.textContent = visible;
         });
 
-        // 정렬
         headers.forEach(function(th) {
             th.addEventListener('click', function() {
                 var col = th.dataset.sort;
@@ -643,17 +664,7 @@
                 rows.sort(function(a, b) {
                     var va, vb;
                     if (col === 'name') { va = a.dataset.name; vb = b.dataset.name; }
-                    else if (col === 'rank') { va = parseFloat(a.dataset.rank); vb = parseFloat(b.dataset.rank); }
-                    else if (col === 'total') { va = parseFloat(a.dataset.total); vb = parseFloat(b.dataset.total); }
-                    else if (col === 'volume') { va = parseFloat(a.dataset.volume); vb = parseFloat(b.dataset.volume); }
-                    else if (col === 'tradingval') { va = parseFloat(a.dataset.tradingval); vb = parseFloat(b.dataset.tradingval); }
-                    else if (col === 'turnover') { va = parseFloat(a.dataset.turnover); vb = parseFloat(b.dataset.turnover); }
-                    else if (col === 'foreign') { va = parseFloat(a.dataset.foreign); vb = parseFloat(b.dataset.foreign); }
-                    else if (col === 'institution') { va = parseFloat(a.dataset.institution); vb = parseFloat(b.dataset.institution); }
-                    else if (col === 'strength') { va = parseFloat(a.dataset.strength); vb = parseFloat(b.dataset.strength); }
-                    else if (col === 'price') { va = parseFloat(a.dataset.price); vb = parseFloat(b.dataset.price); }
-                    else if (col === 'change') { va = parseFloat(a.dataset.change); vb = parseFloat(b.dataset.change); }
-
+                    else { va = parseFloat(a.dataset[col]); vb = parseFloat(b.dataset[col]); }
                     var cmp = type === 'str' ? va.localeCompare(vb, 'ko') : va - vb;
                     return currentDir === 'asc' ? cmp : -cmp;
                 });
@@ -663,9 +674,9 @@
 
         headers[0].classList.add('sort-active');
         headers[0].querySelector('.sort-icon').textContent = '▲';
-    })();
+    }
 
-    // 매수 모달
+    // ── 매수 모달 ──
     function openBuyModal(code, name) {
         document.getElementById('buy-code').value = code;
         document.getElementById('buy-name').value = name;
@@ -709,7 +720,7 @@
         });
     }
 
-    // 예약 모달
+    // ── 예약 모달 ──
     var _resTypeLabels = {pre_market: '08:30 시간외', market_open: '09:00 장개시'};
     function openReservationModal(code, name, type) {
         document.getElementById('reservation-code').value = code;
@@ -771,14 +782,42 @@
         if (e.key === 'Escape') { closeBuyModal(); closeReservationModal(); }
     });
 
-    // 새로고침 버튼 비활성화
+    // 새로고침: form submit 대신 AJAX로 처리
     (function() {
         var form = document.getElementById('refresh-form');
-        var btn = document.getElementById('refresh-btn');
-        if (!form || !btn) return;
-        form.addEventListener('submit', function() {
+        if (!form) return;
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (_isLoading) return;
+            _isLoading = true;
+            var btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             btn.textContent = '갱신 중...';
+            document.getElementById('main-content').innerHTML =
+                '<div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">새로운 데이터를 가져오는 중...</div></div>';
+
+            fetch('/discover/refresh', { method: 'POST' })
+                .then(function() { return fetch('/api/discover-data'); })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    document.getElementById('header-timestamp').textContent = data.timestamp;
+                    if (data.cached_at) {
+                        document.getElementById('cache-info').innerHTML =
+                            '캐시: ' + data.cached_at + ' <span style="color:#58a6ff">(TTL 1시간)</span>';
+                    }
+                    document.getElementById('main-content').innerHTML = _renderContent(data);
+                    _initTableSort();
+                })
+                .catch(function(err) {
+                    document.getElementById('main-content').innerHTML =
+                        '<div class="loading-overlay"><div class="loading-text" style="color:#f85149;">갱신 실패: ' + err.message + '</div></div>';
+                })
+                .finally(function() {
+                    _isLoading = false;
+                    btn.disabled = false;
+                    btn.textContent = '새로고침';
+                });
         });
     })();
     </script>

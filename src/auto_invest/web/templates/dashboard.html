@@ -382,6 +382,27 @@
             -webkit-overflow-scrolling: touch;
         }
 
+        /* 로딩 */
+        .loading-overlay {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 80px 20px;
+            color: #8b949e;
+        }
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #30363d;
+            border-top: 3px solid #58a6ff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 14px; }
+
         /* ── 반응형 ── */
         @media (max-width: 768px) {
             header {
@@ -426,7 +447,7 @@
     <header>
         <div>
             <h1>Auto Invest</h1>
-            <span class="meta">미국 시장 기반 한국 종목 추천 | {{ timestamp }}</span>
+            <span class="meta">미국 시장 기반 한국 종목 추천 | <span id="header-timestamp">로딩 중...</span></span>
             <nav class="nav">
                 <a href="/" class="active">추천</a>
                 <a href="/discover">발굴</a>
@@ -441,168 +462,14 @@
             <form id="refresh-form" action="/refresh" method="post" style="display:inline;">
                 <button type="submit" id="refresh-btn" class="refresh-btn">새로고침</button>
             </form>
-            {% if cache_info %}
-            <div style="font-size: 11px; color: #8b949e; margin-top: 6px; line-height: 1.8;">
-                {% if cache_info.recommendation.time %}
-                <div>추천 결과: {{ cache_info.recommendation.time }} <span style="color:#58a6ff">(TTL {{ cache_info.recommendation.ttl }})</span></div>
-                {% endif %}
-                {% if cache_info.etf_holdings.time %}
-                <div>ETF 구성종목: {{ cache_info.etf_holdings.time }} <span style="color:#58a6ff">(TTL {{ cache_info.etf_holdings.ttl }})</span></div>
-                {% endif %}
-                {% if cache_info.stock_code.time %}
-                <div>종목코드 매핑: {{ cache_info.stock_code.time }} <span style="color:#58a6ff">(TTL {{ cache_info.stock_code.ttl }})</span></div>
-                {% endif %}
-            </div>
-            {% endif %}
+            <div id="cache-info" style="font-size: 11px; color: #8b949e; margin-top: 6px; line-height: 1.8;"></div>
         </div>
     </header>
 
-    <div class="container">
-        <!-- 미국 지수 -->
-        <div class="grid">
-            <div class="card">
-                <h2>미국 주요 지수</h2>
-                <div class="index-grid">
-                    {% for name, pct in index_changes.items() %}
-                    <div class="index-item">
-                        <div class="label">{{ name }}</div>
-                        <div class="value {% if pct > 0 %}up{% elif pct < 0 %}down{% else %}flat{% endif %}">
-                            {{ "%+.2f"|format(pct) }}%
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <!-- 뉴스 키워드 -->
-            <div class="card">
-                <h2>뉴스 키워드 ({{ headline_count }}건 분석)</h2>
-                {% if keyword_counts %}
-                <div class="keyword-cloud">
-                    {% for kw, cnt in keyword_counts %}
-                    <span class="keyword-tag">{{ kw }}<span class="count">{{ cnt }}</span></span>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">감지된 키워드가 없습니다</div>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- 섹터 & 테마 ETF -->
-        <div class="grid" style="margin-bottom: 24px;">
-            <div class="card">
-                <h2>섹터 ETF 등락률</h2>
-                <ul class="sector-list">
-                    {% for etf, pct in sector_changes %}
-                    {% set abs_pct = pct if pct > 0 else -pct %}
-                    {% set bar_width = (abs_pct / 6 * 100) if abs_pct < 6 else 100 %}
-                    <li class="sector-item">
-                        <span class="sector-name">{{ etf }}</span>
-                        <div class="sector-bar-wrap">
-                            <div class="sector-bar {% if pct >= 0 %}positive{% else %}negative{% endif %}"
-                                 style="width: {{ bar_width }}%"></div>
-                        </div>
-                        <span class="sector-pct {% if pct > 0 %}up{% elif pct < 0 %}down{% else %}flat{% endif %}">
-                            {{ "%+.2f"|format(pct) }}%
-                        </span>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </div>
-
-            <div class="card">
-                <h2>테마 ETF 등락률</h2>
-                <ul class="sector-list">
-                    {% for etf, pct in theme_changes %}
-                    {% set abs_pct = pct if pct > 0 else -pct %}
-                    {% set bar_width = (abs_pct / 6 * 100) if abs_pct < 6 else 100 %}
-                    <li class="sector-item">
-                        <span class="sector-name" style="width: 80px;">{{ etf }}</span>
-                        <div class="sector-bar-wrap">
-                            <div class="sector-bar {% if pct >= 0 %}positive{% else %}negative{% endif %}"
-                                 style="width: {{ bar_width }}%"></div>
-                        </div>
-                        <span class="sector-pct {% if pct > 0 %}up{% elif pct < 0 %}down{% else %}flat{% endif %}">
-                            {{ "%+.2f"|format(pct) }}%
-                        </span>
-                    </li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <!-- 추천 종목 -->
-        <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
-                <h2 style="margin-bottom:0;">추천 종목 <span id="rec-count">{{ recommendations|length }}</span>개</h2>
-                <input type="text" id="search-input" placeholder="종목명 또는 코드 검색..."
-                    style="background:#0d1117; border:1px solid #30363d; border-radius:6px;
-                           padding:6px 12px; color:#e1e4e8; font-size:13px; width:220px;
-                           outline:none;"
-                    onfocus="this.style.borderColor='#58a6ff'"
-                    onblur="this.style.borderColor='#30363d'">
-            </div>
-            {% if recommendations %}
-            <div class="table-wrap">
-            <table class="rec-table" id="rec-table">
-                <thead>
-                    <tr>
-                        <th style="width:50px; cursor:pointer;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>
-                        <th style="cursor:pointer;" data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>
-                        <th style="width:80px; cursor:pointer;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>
-                        <th style="width:130px; cursor:pointer;" data-sort="sector" data-type="num">섹터 <span class="sort-icon"></span></th>
-                        <th style="width:130px; cursor:pointer;" data-sort="theme" data-type="num">테마 <span class="sort-icon"></span></th>
-                        <th style="width:130px; cursor:pointer;" data-sort="news" data-type="num">뉴스 <span class="sort-icon"></span></th>
-                        <th style="width:55px;">매수</th>
-                        <th style="width:130px;">예약매수</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for rec in recommendations %}
-                    <tr data-name="{{ rec.name }}" data-code="{{ rec.code }}"
-                        data-rank="{{ loop.index }}" data-total="{{ rec.total_score }}"
-                        data-sector="{{ rec.sector_score }}" data-theme="{{ rec.theme_score }}"
-                        data-news="{{ rec.news_score }}">
-                        <td>
-                            <span class="rank {% if loop.index == 1 %}rank-1{% elif loop.index == 2 %}rank-2{% elif loop.index == 3 %}rank-3{% else %}rank-other{% endif %}">
-                                {{ loop.index }}
-                            </span>
-                        </td>
-                        <td>
-                            <a class="stock-link" href="https://finance.naver.com/item/main.naver?code={{ rec.code }}" target="_blank" rel="noopener">
-                                <span class="stock-name">{{ rec.name }}</span>
-                                <span class="stock-code">{{ rec.code }}</span>
-                            </a>
-                        </td>
-                        <td style="font-weight:700; font-size:16px;">{{ "%.1f"|format(rec.total_score) }}</td>
-                        <td>
-                            <span class="score-bar score-sector" style="width: {{ (rec.sector_score / 10 * 60)|int }}px"></span>
-                            {{ "%.1f"|format(rec.sector_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-theme" style="width: {{ (rec.theme_score / 10 * 60)|int }}px"></span>
-                            {{ "%.1f"|format(rec.theme_score) }}
-                        </td>
-                        <td>
-                            <span class="score-bar score-news" style="width: {{ (rec.news_score / 10 * 60)|int }}px"></span>
-                            {{ "%.1f"|format(rec.news_score) }}
-                        </td>
-                        <td>
-                            <button class="buy-btn" onclick="openBuyModal('{{ rec.code }}', '{{ rec.name }}')">매수</button>
-                        </td>
-                        <td style="white-space:nowrap;">
-                            <button class="premarket-btn" onclick="openReservationModal('{{ rec.code }}', '{{ rec.name }}', 'pre_market')" title="08:30 장전 시간외">08:30</button>
-                            <button class="premarket-btn" style="background:#238636;" onclick="openReservationModal('{{ rec.code }}', '{{ rec.name }}', 'market_open')" title="09:00 장개시 시장가">09:00</button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            </div>
-            {% else %}
-            <div class="empty-state">추천 종목이 없습니다. 미국 시장 데이터를 확인하세요.</div>
-            {% endif %}
+    <div class="container" id="main-content">
+        <div class="loading-overlay">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">추천 데이터를 불러오는 중...</div>
         </div>
     </div>
 
@@ -650,44 +517,193 @@
     </footer>
 
     <script>
-    (function() {
-        const table = document.getElementById('rec-table');
-        if (!table) return;
-        const tbody = table.querySelector('tbody');
-        const searchInput = document.getElementById('search-input');
-        const countEl = document.getElementById('rec-count');
-        const headers = table.querySelectorAll('th[data-sort]');
-        let currentSort = 'rank';
-        let currentDir = 'asc';
+    // ── 유틸리티 ──
+    function _cc(v) { return v > 0 ? 'up' : v < 0 ? 'down' : 'flat'; }
+    function _pct(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; }
+    function _esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-        // 검색
+    // ── 데이터 로딩 ──
+    var _isLoading = false;
+
+    function _loadData() {
+        if (_isLoading) return;
+        _isLoading = true;
+        var btn = document.getElementById('refresh-btn');
+        btn.disabled = true;
+
+        fetch('/api/dashboard-data')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                document.getElementById('header-timestamp').textContent = data.timestamp;
+                _renderCacheInfo(data.cache_info);
+                document.getElementById('main-content').innerHTML = _renderContent(data);
+                _initTableSort();
+            })
+            .catch(function(err) {
+                document.getElementById('main-content').innerHTML =
+                    '<div class="loading-overlay"><div class="loading-text" style="color:#f85149;">데이터 로딩 실패: ' + err.message + '</div></div>';
+            })
+            .finally(function() {
+                _isLoading = false;
+                btn.disabled = false;
+                btn.textContent = '새로고침';
+            });
+    }
+
+    _loadData();
+
+    function _renderCacheInfo(ci) {
+        if (!ci) return;
+        var html = '';
+        if (ci.recommendation && ci.recommendation.time)
+            html += '<div>추천 결과: ' + ci.recommendation.time + ' <span style="color:#58a6ff">(TTL ' + ci.recommendation.ttl + ')</span></div>';
+        if (ci.etf_holdings && ci.etf_holdings.time)
+            html += '<div>ETF 구성종목: ' + ci.etf_holdings.time + ' <span style="color:#58a6ff">(TTL ' + ci.etf_holdings.ttl + ')</span></div>';
+        if (ci.stock_code && ci.stock_code.time)
+            html += '<div>종목코드 매핑: ' + ci.stock_code.time + ' <span style="color:#58a6ff">(TTL ' + ci.stock_code.ttl + ')</span></div>';
+        document.getElementById('cache-info').innerHTML = html;
+    }
+
+    function _renderContent(data) {
+        var html = '';
+
+        // 미국 지수 + 키워드
+        html += '<div class="grid">';
+        html += '<div class="card"><h2>미국 주요 지수</h2><div class="index-grid">';
+        var ic = data.index_changes || {};
+        for (var name in ic) {
+            var pct = ic[name];
+            html += '<div class="index-item"><div class="label">' + _esc(name) + '</div>'
+                  + '<div class="value ' + _cc(pct) + '">' + _pct(pct) + '</div></div>';
+        }
+        html += '</div></div>';
+
+        html += '<div class="card"><h2>뉴스 키워드 (' + (data.headline_count || 0) + '건 분석)</h2>';
+        var kw = data.keyword_counts || [];
+        if (kw.length) {
+            html += '<div class="keyword-cloud">';
+            kw.forEach(function(item) {
+                html += '<span class="keyword-tag">' + _esc(item[0]) + '<span class="count">' + item[1] + '</span></span>';
+            });
+            html += '</div>';
+        } else {
+            html += '<div class="empty-state">감지된 키워드가 없습니다</div>';
+        }
+        html += '</div></div>';
+
+        // 섹터 & 테마
+        html += '<div class="grid" style="margin-bottom: 24px;">';
+        html += _renderBarCard('섹터 ETF 등락률', data.sector_changes || [], 50);
+        html += _renderBarCard('테마 ETF 등락률', data.theme_changes || [], 80);
+        html += '</div>';
+
+        // 추천 종목
+        var recs = data.recommendations || [];
+        html += '<div class="card">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+        html += '<h2 style="margin-bottom:0;">추천 종목 <span id="rec-count">' + recs.length + '</span>개</h2>';
+        html += '<input type="text" id="search-input" placeholder="종목명 또는 코드 검색..." '
+              + 'style="background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:6px 12px; color:#e1e4e8; font-size:13px; width:220px; outline:none;" '
+              + 'onfocus="this.style.borderColor=\'#58a6ff\'" onblur="this.style.borderColor=\'#30363d\'">';
+        html += '</div>';
+
+        if (recs.length) {
+            html += '<div class="table-wrap"><table class="rec-table" id="rec-table"><thead><tr>';
+            html += '<th style="width:50px; cursor:pointer;" data-sort="rank" data-type="num"># <span class="sort-icon">▼</span></th>';
+            html += '<th style="cursor:pointer;" data-sort="name" data-type="str">종목 <span class="sort-icon"></span></th>';
+            html += '<th style="width:80px; cursor:pointer;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>';
+            html += '<th style="width:130px; cursor:pointer;" data-sort="sector" data-type="num">섹터 <span class="sort-icon"></span></th>';
+            html += '<th style="width:130px; cursor:pointer;" data-sort="theme" data-type="num">테마 <span class="sort-icon"></span></th>';
+            html += '<th style="width:130px; cursor:pointer;" data-sort="news" data-type="num">뉴스 <span class="sort-icon"></span></th>';
+            html += '<th style="width:55px;">매수</th>';
+            html += '<th style="width:130px;">예약매수</th>';
+            html += '</tr></thead><tbody>';
+
+            recs.forEach(function(rec, i) {
+                var rank = i + 1;
+                var rc = rank <= 3 ? 'rank-' + rank : 'rank-other';
+                html += '<tr data-name="' + _esc(rec.name) + '" data-code="' + _esc(rec.code) + '"'
+                      + ' data-rank="' + rank + '" data-total="' + rec.total_score + '"'
+                      + ' data-sector="' + rec.sector_score + '" data-theme="' + rec.theme_score + '"'
+                      + ' data-news="' + rec.news_score + '">';
+                html += '<td><span class="rank ' + rc + '">' + rank + '</span></td>';
+                html += '<td><a class="stock-link" href="https://finance.naver.com/item/main.naver?code=' + _esc(rec.code) + '" target="_blank" rel="noopener">'
+                      + '<span class="stock-name">' + _esc(rec.name) + '</span>'
+                      + '<span class="stock-code">' + _esc(rec.code) + '</span></a></td>';
+                html += '<td style="font-weight:700; font-size:16px;">' + rec.total_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-sector" style="width:' + Math.round(rec.sector_score / 10 * 60) + 'px"></span>' + rec.sector_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-theme" style="width:' + Math.round(rec.theme_score / 10 * 60) + 'px"></span>' + rec.theme_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-news" style="width:' + Math.round(rec.news_score / 10 * 60) + 'px"></span>' + rec.news_score.toFixed(1) + '</td>';
+                html += '<td><button class="buy-btn" onclick="openBuyModal(\'' + _esc(rec.code) + '\', \'' + _esc(rec.name) + '\')">매수</button></td>';
+                html += '<td style="white-space:nowrap;">'
+                      + '<button class="premarket-btn" onclick="openReservationModal(\'' + _esc(rec.code) + '\', \'' + _esc(rec.name) + '\', \'pre_market\')" title="08:30 장전 시간외">08:30</button> '
+                      + '<button class="premarket-btn" style="background:#238636;" onclick="openReservationModal(\'' + _esc(rec.code) + '\', \'' + _esc(rec.name) + '\', \'market_open\')" title="09:00 장개시 시장가">09:00</button>'
+                      + '</td>';
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+        } else {
+            html += '<div class="empty-state">추천 종목이 없습니다. 미국 시장 데이터를 확인하세요.</div>';
+        }
+        html += '</div>';
+
+        return html;
+    }
+
+    function _renderBarCard(title, items, nameWidth) {
+        var html = '<div class="card"><h2>' + title + '</h2><ul class="sector-list">';
+        items.forEach(function(item) {
+            var name = item[0], pct = item[1];
+            var absPct = Math.abs(pct);
+            var barW = absPct < 6 ? (absPct / 6 * 100) : 100;
+            html += '<li class="sector-item">'
+                  + '<span class="sector-name" style="width:' + nameWidth + 'px;">' + _esc(name) + '</span>'
+                  + '<div class="sector-bar-wrap"><div class="sector-bar ' + (pct >= 0 ? 'positive' : 'negative') + '" style="width:' + barW + '%"></div></div>'
+                  + '<span class="sector-pct ' + _cc(pct) + '">' + _pct(pct) + '</span>'
+                  + '</li>';
+        });
+        html += '</ul></div>';
+        return html;
+    }
+
+    // ── 테이블 정렬 & 검색 초기화 ──
+    function _initTableSort() {
+        var table = document.getElementById('rec-table');
+        if (!table) return;
+        var tbody = table.querySelector('tbody');
+        var searchInput = document.getElementById('search-input');
+        var countEl = document.getElementById('rec-count');
+        var headers = table.querySelectorAll('th[data-sort]');
+        var currentSort = 'rank';
+        var currentDir = 'asc';
+
         searchInput.addEventListener('input', function() {
-            const q = this.value.toLowerCase();
-            let visible = 0;
+            var q = this.value.toLowerCase();
+            var visible = 0;
             tbody.querySelectorAll('tr').forEach(function(row) {
-                const name = row.dataset.name.toLowerCase();
-                const code = row.dataset.code;
-                const match = name.includes(q) || code.includes(q);
+                var name = row.dataset.name.toLowerCase();
+                var code = row.dataset.code;
+                var match = name.includes(q) || code.includes(q);
                 row.style.display = match ? '' : 'none';
                 if (match) visible++;
             });
             countEl.textContent = visible;
         });
 
-        // 정렬
         headers.forEach(function(th) {
+            th.style.cursor = 'pointer';
             th.addEventListener('click', function() {
-                const col = th.dataset.sort;
-                const type = th.dataset.type;
+                var col = th.dataset.sort;
+                var type = th.dataset.type;
 
                 if (currentSort === col) {
                     currentDir = currentDir === 'asc' ? 'desc' : 'asc';
                 } else {
                     currentSort = col;
-                    currentDir = type === 'num' ? 'asc' : 'asc';
+                    currentDir = 'asc';
                 }
 
-                // 아이콘 업데이트
                 headers.forEach(function(h) {
                     h.classList.remove('sort-active');
                     h.querySelector('.sort-icon').textContent = '';
@@ -695,49 +711,23 @@
                 th.classList.add('sort-active');
                 th.querySelector('.sort-icon').textContent = currentDir === 'asc' ? '▲' : '▼';
 
-                // 행 정렬
-                const rows = Array.from(tbody.querySelectorAll('tr'));
+                var rows = Array.from(tbody.querySelectorAll('tr'));
                 rows.sort(function(a, b) {
-                    let va, vb;
-                    if (col === 'name') {
-                        va = a.dataset.name;
-                        vb = b.dataset.name;
-                    } else if (col === 'rank') {
-                        va = parseFloat(a.dataset.rank);
-                        vb = parseFloat(b.dataset.rank);
-                    } else if (col === 'total') {
-                        va = parseFloat(a.dataset.total);
-                        vb = parseFloat(b.dataset.total);
-                    } else if (col === 'sector') {
-                        va = parseFloat(a.dataset.sector);
-                        vb = parseFloat(b.dataset.sector);
-                    } else if (col === 'theme') {
-                        va = parseFloat(a.dataset.theme);
-                        vb = parseFloat(b.dataset.theme);
-                    } else if (col === 'news') {
-                        va = parseFloat(a.dataset.news);
-                        vb = parseFloat(b.dataset.news);
-                    }
-
-                    let cmp;
-                    if (type === 'str') {
-                        cmp = va.localeCompare(vb, 'ko');
-                    } else {
-                        cmp = va - vb;
-                    }
+                    var va, vb;
+                    if (col === 'name') { va = a.dataset.name; vb = b.dataset.name; }
+                    else { va = parseFloat(a.dataset[col]); vb = parseFloat(b.dataset[col]); }
+                    var cmp = type === 'str' ? va.localeCompare(vb, 'ko') : va - vb;
                     return currentDir === 'asc' ? cmp : -cmp;
                 });
-
                 rows.forEach(function(row) { tbody.appendChild(row); });
             });
         });
 
-        // 초기 정렬 표시: # 오름차순
         headers[0].classList.add('sort-active');
         headers[0].querySelector('.sort-icon').textContent = '▲';
-    })();
+    }
 
-    // 매수 모달
+    // ── 매수 모달 ──
     function openBuyModal(code, name) {
         document.getElementById('buy-code').value = code;
         document.getElementById('buy-name').value = name;
@@ -799,7 +789,7 @@
         if (e.key === 'Escape') { closeBuyModal(); closeReservationModal(); }
     });
 
-    // 예약 모달 (시간외 / 장개시 공용)
+    // ── 예약 모달 ──
     var _resTypeLabels = {pre_market: '08:30 시간외', market_open: '09:00 장개시'};
 
     function openReservationModal(code, name, type) {
@@ -818,29 +808,6 @@
         document.getElementById('reservation-modal').classList.remove('active');
     }
 
-    function _submitReservationRequest(payload, btn, originalText) {
-        fetch('/api/pre-market-reservation', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(payload)
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            if (data.success) {
-                var label = _resTypeLabels[payload.reservation_type] || '예약';
-                alert(label + ' 완료: ' + payload.stock_name + ' ' + payload.quantity + '주');
-            } else {
-                alert('예약 실패: ' + data.message);
-            }
-            if (btn) { btn.disabled = false; btn.textContent = originalText; }
-            closeReservationModal();
-        })
-        .catch(function(err) {
-            alert('요청 오류: ' + err);
-            if (btn) { btn.disabled = false; btn.textContent = originalText; }
-        });
-    }
-
     function submitReservation() {
         var btn = document.getElementById('reservation-confirm-btn');
         btn.disabled = true;
@@ -855,18 +822,63 @@
             reservation_type: document.getElementById('reservation-type').value
         };
 
-        _submitReservationRequest(payload, btn, '예약');
+        fetch('/api/pre-market-reservation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.success) {
+                var label = _resTypeLabels[payload.reservation_type] || '예약';
+                alert(label + ' 완료: ' + payload.stock_name + ' ' + payload.quantity + '주');
+            } else {
+                alert('예약 실패: ' + data.message);
+            }
+            closeReservationModal();
+            btn.disabled = false;
+            btn.textContent = '예약';
+        })
+        .catch(function(err) {
+            alert('요청 오류: ' + err);
+            btn.disabled = false;
+            btn.textContent = '예약';
+        });
     }
 
-    // 새로고침 버튼 비활성화
+    // 새로고침: form submit 대신 AJAX로 처리
     (function() {
         var form = document.getElementById('refresh-form');
-        var btn = document.getElementById('refresh-btn');
-        if (!form || !btn) return;
+        if (!form) return;
 
-        form.addEventListener('submit', function() {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (_isLoading) return;
+            _isLoading = true;
+            var btn = document.getElementById('refresh-btn');
             btn.disabled = true;
             btn.textContent = '갱신 중...';
+            document.getElementById('main-content').innerHTML =
+                '<div class="loading-overlay"><div class="loading-spinner"></div><div class="loading-text">새로운 데이터를 가져오는 중...</div></div>';
+
+            fetch('/refresh', { method: 'POST' })
+                .then(function() { return fetch('/api/dashboard-data'); })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    document.getElementById('header-timestamp').textContent = data.timestamp;
+                    _renderCacheInfo(data.cache_info);
+                    document.getElementById('main-content').innerHTML = _renderContent(data);
+                    _initTableSort();
+                })
+                .catch(function(err) {
+                    document.getElementById('main-content').innerHTML =
+                        '<div class="loading-overlay"><div class="loading-text" style="color:#f85149;">갱신 실패: ' + err.message + '</div></div>';
+                })
+                .finally(function() {
+                    _isLoading = false;
+                    btn.disabled = false;
+                    btn.textContent = '새로고침';
+                });
         });
     })();
     </script>
