@@ -525,6 +525,28 @@
     }
 
     var _cacheOnly = true;
+
+    // 스캐너 실행 상태 확인 → 실행 중이면 새로고침 버튼 비활성화
+    function _checkScannerStatus() {
+        fetch('/api/discover-status')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var btn = document.getElementById('refresh-btn');
+                if (data.scanning) {
+                    btn.disabled = true;
+                    btn.textContent = '스캔 중...';
+                    setTimeout(_checkScannerStatus, 3000);
+                } else {
+                    if (!_isLoading) {
+                        btn.disabled = false;
+                        btn.textContent = '새로고침';
+                    }
+                }
+            })
+            .catch(function() {});
+    }
+    _checkScannerStatus();
+
     _loadData();
 
     function _renderContent(data) {
@@ -825,8 +847,7 @@
                 })
                 .finally(function() {
                     _isLoading = false;
-                    btn.disabled = false;
-                    btn.textContent = '새로고침';
+                    _checkScannerStatus();
                 });
         });
     })();

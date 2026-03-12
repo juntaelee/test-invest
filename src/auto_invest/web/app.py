@@ -298,6 +298,14 @@ def api_discover_data(cache_only: bool = False):
     return result
 
 
+@app.get("/api/discover-status")
+def api_discover_status():
+    """발굴 스캐너 실행 상태 조회."""
+    from auto_invest.strategy.scanner import is_scanning
+
+    return {"scanning": is_scanning()}
+
+
 @app.post("/discover/refresh")
 def discover_refresh():
     """발굴 캐시 무시하고 새로 조회."""

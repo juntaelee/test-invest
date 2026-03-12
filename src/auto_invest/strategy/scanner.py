@@ -6,6 +6,7 @@ KIS API의 시장 데이터(거래량/거래대금/회전율 순위, 등락률, 
 """
 
 import logging
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 # 캐시 TTL (초): 1시간
 CACHE_TTL_SECONDS = 3600
 _CACHE_KEY = "scanner:discover"
+
+# 스캐너 실행 상태 추적
+_scanning = False
+_scanning_lock = threading.Lock()
 
 # 시총 상위 대형주 제외 기준 (종목코드 기반, 대표 대형주)
 # TODO: 동적으로 시총 순위를 조회하여 필터링하는 것이 이상적
@@ -194,8 +199,33 @@ def run_scanner(
     if cache_only:
         return None
 
-    logger.info("발굴 스캐너 시작 (top_n=%d)", top_n)
+    global _scanning
+    with _scanning_lock:
+        if _scanning:
+            logger.info("발굴 스캐너가 이미 실행 중 — 캐시 반환 시도")
+            cached, cached_at = cache.get(_CACHE_KEY, ttl_seconds=None)
+            if cached is not None:
+                report = DiscoverReport.from_dict(cached)  # type: ignore[arg-type]
+                report.cached_at = cached_at
+                return report
+            return None
+        _scanning = True
 
+    logger.info("발굴 스캐너 시작 (top_n=%d)", top_n)
+    try:
+        return _run_scanner_impl(top_n)
+    finally:
+        with _scanning_lock:
+            _scanning = False
+
+
+def is_scanning() -> bool:
+    """스캐너가 현재 실행 중인지 반환."""
+    return _scanning
+
+
+def _run_scanner_impl(top_n: int) -> DiscoverReport:
+    """스캐너 본체 (내부 전용)."""
     # 1. 데이터 수집
     volume_data = get_volume_rank(max_items=50)
     trading_value_data = get_trading_value_rank(max_items=50)
