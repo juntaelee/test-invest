@@ -171,15 +171,17 @@ def _normalize_scores(raw: dict[str, float]) -> dict[str, float]:
 def run_scanner(
     top_n: int = 30,
     force_refresh: bool = False,
-) -> DiscoverReport:
+    cache_only: bool = False,
+) -> DiscoverReport | None:
     """발굴 스캐너 실행.
 
     Args:
         top_n: 종합 발굴 종목 수
         force_refresh: True이면 캐시 무시
+        cache_only: True이면 캐시만 조회, 없으면 None 반환
 
     Returns:
-        DiscoverReport
+        DiscoverReport 또는 cache_only일 때 캐시 없으면 None
     """
     if not force_refresh:
         cached, cached_at = cache.get(_CACHE_KEY, ttl_seconds=CACHE_TTL_SECONDS)
@@ -188,6 +190,9 @@ def run_scanner(
             report = DiscoverReport.from_dict(cached)  # type: ignore[arg-type]
             report.cached_at = cached_at
             return report
+
+    if cache_only:
+        return None
 
     logger.info("발굴 스캐너 시작 (top_n=%d)", top_n)
 

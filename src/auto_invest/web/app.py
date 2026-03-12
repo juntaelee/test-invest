@@ -209,9 +209,11 @@ async def dashboard(request: Request):
 
 
 @app.get("/api/dashboard-data")
-def api_dashboard_data():
+def api_dashboard_data(cache_only: bool = False):
     """대시보드 데이터 JSON API."""
-    report = run_recommendation(top_n=100)
+    report = run_recommendation(top_n=100, cache_only=cache_only)
+    if report is None:
+        return {"empty": True}
     ctx = _build_context(report)
     return {
         "timestamp": ctx["timestamp"],
@@ -278,9 +280,11 @@ async def discover_page(request: Request):
 
 
 @app.get("/api/discover-data")
-def api_discover_data():
+def api_discover_data(cache_only: bool = False):
     """발굴 데이터 JSON API."""
-    report = run_scanner(top_n=30)
+    report = run_scanner(top_n=30, cache_only=cache_only)
+    if report is None:
+        return {"empty": True}
 
     kst = timezone(timedelta(hours=9))
     cached_at_str = ""

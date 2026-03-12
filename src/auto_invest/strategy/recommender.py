@@ -92,7 +92,8 @@ class RecommendationReport:
 def run_recommendation(
     top_n: int = 10,
     force_refresh: bool = False,
-) -> RecommendationReport:
+    cache_only: bool = False,
+) -> RecommendationReport | None:
     """추천 파이프라인 실행.
 
     캐시 TTL(기본 1시간) 내 재호출 시 이전 결과를 반환한다.
@@ -100,9 +101,10 @@ def run_recommendation(
     Args:
         top_n: 추천 종목 수 (기본 10)
         force_refresh: True이면 캐시 무시하고 새로 조회
+        cache_only: True이면 캐시만 조회, 없으면 None 반환
 
     Returns:
-        RecommendationReport
+        RecommendationReport 또는 cache_only일 때 캐시 없으면 None
     """
     cache_key = f"{_CACHE_KEY_PREFIX}{top_n}"
 
@@ -114,6 +116,9 @@ def run_recommendation(
             report = RecommendationReport.from_dict(cached)  # type: ignore[arg-type]
             report.cached_at = cached_at
             return report
+
+    if cache_only:
+        return None
 
     logger.info("추천 파이프라인 시작 (top_n=%d)", top_n)
 

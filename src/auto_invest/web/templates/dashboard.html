@@ -531,9 +531,17 @@
         var btn = document.getElementById('refresh-btn');
         btn.disabled = true;
 
-        fetch('/api/dashboard-data')
+        var url = '/api/dashboard-data';
+        if (_cacheOnly) url += '?cache_only=true';
+
+        fetch(url)
             .then(function(r) { return r.json(); })
             .then(function(data) {
+                if (data.empty) {
+                    document.getElementById('main-content').innerHTML =
+                        '<div class="loading-overlay"><div class="loading-text">캐시된 데이터가 없습니다. 새로고침 버튼을 눌러주세요.</div></div>';
+                    return;
+                }
                 document.getElementById('header-timestamp').textContent = data.timestamp;
                 _renderCacheInfo(data.cache_info);
                 document.getElementById('main-content').innerHTML = _renderContent(data);
@@ -545,11 +553,13 @@
             })
             .finally(function() {
                 _isLoading = false;
+                _cacheOnly = false;
                 btn.disabled = false;
                 btn.textContent = '새로고침';
             });
     }
 
+    var _cacheOnly = true;
     _loadData();
 
     function _renderCacheInfo(ci) {
