@@ -16,6 +16,7 @@ from auto_invest.core.trading import (
     get_pending_pre_market_reservations,
     get_portfolio,
 )
+from auto_invest.strategy.scanner import run_scanner
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +161,18 @@ def check_tp_sl() -> None:
                 logger.error("SL 매도 실패: %s %s", name, result.get("message"))
 
 
+def auto_scan() -> None:
+    """장중 3분마다 발굴 스캐너 자동 실행."""
+    if not is_market_open():
+        return
+
+    try:
+        run_scanner(top_n=30, force_refresh=True)
+        logger.info("발굴 스캐너 자동 갱신 완료")
+    except Exception:
+        logger.warning("발굴 스캐너 자동 갱신 실패", exc_info=True)
+
+
 def start_scheduler(stop_event: threading.Event) -> None:
     """schedule 루프 실행 (스레드용).
 
@@ -168,7 +181,8 @@ def start_scheduler(stop_event: threading.Event) -> None:
     schedule.every(1).minutes.do(check_tp_sl)
     schedule.every(10).seconds.do(check_pre_market_reservations)
     schedule.every(10).seconds.do(check_market_open_reservations)
-    logger.info("스케줄러 시작 (TP/SL 1분, 시간외 08:30, 장개시 09:00)")
+    schedule.every(3).minutes.do(auto_scan)
+    logger.info("스케줄러 시작 (TP/SL 1분, 발굴 3분, 시간외 08:30, 장개시 09:00)")
 
     while not stop_event.is_set():
         schedule.run_pending()
