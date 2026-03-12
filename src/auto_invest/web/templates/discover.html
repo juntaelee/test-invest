@@ -526,7 +526,8 @@
 
     var _cacheOnly = true;
 
-    // 스캐너 실행 상태 확인 → 실행 중이면 새로고침 버튼 비활성화
+    // 스캐너 실행 상태 주기적 확인 → 실행 중이면 새로고침 버튼 비활성화
+    var _wasScanning = false;
     function _checkScannerStatus() {
         fetch('/api/discover-status')
             .then(function(r) { return r.json(); })
@@ -535,17 +536,23 @@
                 if (data.scanning) {
                     btn.disabled = true;
                     btn.textContent = '스캔 중...';
-                    setTimeout(_checkScannerStatus, 3000);
+                    _wasScanning = true;
                 } else {
                     if (!_isLoading) {
                         btn.disabled = false;
                         btn.textContent = '새로고침';
+                    }
+                    // 자동 스캔 완료 시 데이터 새로 로드
+                    if (_wasScanning) {
+                        _wasScanning = false;
+                        _loadData();
                     }
                 }
             })
             .catch(function() {});
     }
     _checkScannerStatus();
+    setInterval(_checkScannerStatus, 5000);
 
     _loadData();
 

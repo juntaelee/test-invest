@@ -166,11 +166,12 @@ def auto_scan() -> None:
     if not is_market_open():
         return
 
+    logger.info("[자동스캔] 발굴 스캐너 시작")
     try:
         run_scanner(top_n=30, force_refresh=True)
-        logger.info("발굴 스캐너 자동 갱신 완료")
+        logger.info("[자동스캔] 발굴 스캐너 완료")
     except Exception:
-        logger.warning("발굴 스캐너 자동 갱신 실패", exc_info=True)
+        logger.warning("[자동스캔] 발굴 스캐너 실패", exc_info=True)
 
 
 def start_scheduler(stop_event: threading.Event) -> None:
