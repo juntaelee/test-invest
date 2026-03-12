@@ -7,6 +7,7 @@ KIS API의 시장 데이터(거래량/거래대금/회전율 순위, 등락률, 
 
 import logging
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 
@@ -226,10 +227,14 @@ def is_scanning() -> bool:
 
 def _run_scanner_impl(top_n: int) -> DiscoverReport:
     """스캐너 본체 (내부 전용)."""
-    # 1. 데이터 수집
-    volume_data = get_volume_rank(max_items=50)
-    trading_value_data = get_trading_value_rank(max_items=50)
-    fluctuation_data = get_fluctuation_rank(max_items=50)
+    # 1. 데이터 수집 (병렬)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_volume = pool.submit(get_volume_rank, max_items=50)
+        f_trading = pool.submit(get_trading_value_rank, max_items=50)
+        f_fluctuation = pool.submit(get_fluctuation_rank, max_items=50)
+    volume_data = f_volume.result()
+    trading_value_data = f_trading.result()
+    fluctuation_data = f_fluctuation.result()
 
     # 2. 종목 정보 수집
     stock_info: dict[str, dict] = {}
@@ -285,42 +290,42 @@ def _run_scanner_impl(top_n: int) -> DiscoverReport:
             "turnover_rate": 0,
         })
 
-    # 외국인/기관 순매수 (종목별 개별 조회)
+    # 외국인/기관 순매수 + 체결강도 (종목별 병렬 조회)
     all_candidate_codes = set(volume_raw) | set(trading_value_raw) | set(fluctuation_raw)
     foreign_raw: dict[str, float] = {}
     institution_raw: dict[str, float] = {}
-    logger.info("투자자 매매동향 조회 중 (%d종목)...", len(all_candidate_codes))
-    for code in all_candidate_codes:
-        trend = get_investor_trend(code)
-        if not trend:
-            continue
-        fq = trend["foreign_net_qty"]
-        iq = trend["institution_net_qty"]
-        info = stock_info.get(code)
-        if info:
-            info["foreign_net_qty"] = fq
-            info["institution_net_qty"] = iq
-        if fq > 0:
-            foreign_raw[code] = float(fq)
-        if iq > 0:
-            institution_raw[code] = float(iq)
-    logger.info("투자자 매매동향 조회 완료 (외국인 순매수 %d, 기관 순매수 %d)",
-                len(foreign_raw), len(institution_raw))
-
-    # 체결강도 조회 (종목별 개별 조회)
     strength_raw: dict[str, float] = {}
-    logger.info("체결강도 조회 중 (%d종목)...", len(all_candidate_codes))
-    for code in all_candidate_codes:
-        val = get_trade_strength(code)
-        if val is None:
-            continue
-        info = stock_info.get(code)
-        if info:
-            info["trade_strength"] = val
-        # 100 이상(매수 우위)만 양의 점수 부여
-        if val > 100:
-            strength_raw[code] = val - 100
-    logger.info("체결강도 조회 완료 (매수우위 %d종목)", len(strength_raw))
+    logger.info("투자자동향+체결강도 병렬 조회 중 (%d종목)...", len(all_candidate_codes))
+
+    def _fetch_per_stock(code: str) -> tuple[str, dict | None, float | None]:
+        trend = get_investor_trend(code)
+        strength = get_trade_strength(code)
+        return code, trend, strength
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = pool.map(_fetch_per_stock, all_candidate_codes)
+
+    for code, trend, strength_val in results:
+        if trend:
+            fq = trend["foreign_net_qty"]
+            iq = trend["institution_net_qty"]
+            info = stock_info.get(code)
+            if info:
+                info["foreign_net_qty"] = fq
+                info["institution_net_qty"] = iq
+            if fq > 0:
+                foreign_raw[code] = float(fq)
+            if iq > 0:
+                institution_raw[code] = float(iq)
+        if strength_val is not None:
+            info = stock_info.get(code)
+            if info:
+                info["trade_strength"] = strength_val
+            if strength_val > 100:
+                strength_raw[code] = strength_val - 100
+
+    logger.info("병렬 조회 완료 (외국인 %d, 기관 %d, 체결강도 매수우위 %d)",
+                len(foreign_raw), len(institution_raw), len(strength_raw))
 
     # 3. 정규화
     volume_scores = _normalize_scores(volume_raw)
