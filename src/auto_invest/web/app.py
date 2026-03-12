@@ -209,7 +209,7 @@ async def dashboard(request: Request):
 
 
 @app.get("/api/dashboard-data")
-async def api_dashboard_data():
+def api_dashboard_data():
     """대시보드 데이터 JSON API."""
     report = run_recommendation(top_n=100)
     ctx = _build_context(report)
@@ -236,7 +236,7 @@ async def api_dashboard_data():
 
 
 @app.post("/refresh")
-async def refresh():
+def refresh():
     """캐시 무시하고 새로 조회."""
     run_recommendation(top_n=100, force_refresh=True)
     return {"success": True}
@@ -278,7 +278,7 @@ async def discover_page(request: Request):
 
 
 @app.get("/api/discover-data")
-async def api_discover_data():
+def api_discover_data():
     """발굴 데이터 JSON API."""
     report = run_scanner(top_n=30)
 
@@ -295,7 +295,7 @@ async def api_discover_data():
 
 
 @app.post("/discover/refresh")
-async def discover_refresh():
+def discover_refresh():
     """발굴 캐시 무시하고 새로 조회."""
     run_scanner(top_n=30, force_refresh=True)
     return {"success": True}
@@ -310,7 +310,7 @@ async def portfolio_page(request: Request):
 
 
 @app.get("/api/portfolio-data")
-async def api_portfolio_data():
+def api_portfolio_data():
     """포트폴리오 데이터 JSON API."""
     error = None
     portfolio = []
@@ -334,7 +334,7 @@ async def api_portfolio_data():
 
 
 @app.post("/api/buy")
-async def api_buy(req: BuyRequest):
+def api_buy(req: BuyRequest):
     """매수 주문 API."""
     result = execute_buy(
         stock_code=req.stock_code,
@@ -347,14 +347,14 @@ async def api_buy(req: BuyRequest):
 
 
 @app.post("/api/sell")
-async def api_sell(req: SellRequest):
+def api_sell(req: SellRequest):
     """매도 주문 API."""
     result = execute_sell(stock_code=req.stock_code, quantity=req.quantity)
     return result
 
 
 @app.post("/api/position")
-async def api_create_position(req: CreatePositionRequest):
+def api_create_position(req: CreatePositionRequest):
     """포지션 신규 등록 API (TP/SL만 설정, 매수 없음)."""
     ok = create_position(
         stock_code=req.stock_code,
@@ -368,7 +368,7 @@ async def api_create_position(req: CreatePositionRequest):
 
 
 @app.put("/api/position")
-async def api_update_position(req: UpdatePositionRequest):
+def api_update_position(req: UpdatePositionRequest):
     """포지션 TP/SL 수정 API."""
     ok = update_position(stock_code=req.stock_code, tp_pct=req.tp_pct, sl_pct=req.sl_pct)
     if ok:
@@ -377,7 +377,7 @@ async def api_update_position(req: UpdatePositionRequest):
 
 
 @app.delete("/api/position/{stock_code}")
-async def api_delete_position(stock_code: str):
+def api_delete_position(stock_code: str):
     """포지션 삭제 API (매도 없이 기록만 삭제)."""
     ok = delete_position(stock_code=stock_code)
     if ok:
@@ -389,7 +389,7 @@ async def api_delete_position(stock_code: str):
 
 
 @app.get("/api/stock-name/{stock_code}")
-async def api_stock_name(stock_code: str):
+def api_stock_name(stock_code: str):
     """종목코드로 종목명과 현재가를 조회한다."""
     name = lookup_stock_name(stock_code)
     if not name:
@@ -407,7 +407,7 @@ async def api_stock_name(stock_code: str):
 
 
 @app.post("/api/pre-market-reservation")
-async def api_create_reservation(req: ReservationRequest):
+def api_create_reservation(req: ReservationRequest):
     """매수 예약 등록 API (시간외/장개시)."""
     if req.reservation_type not in ("pre_market", "market_open"):
         return {"success": False, "message": "잘못된 예약 타입"}
@@ -423,7 +423,7 @@ async def api_create_reservation(req: ReservationRequest):
 
 
 @app.delete("/api/pre-market-reservation/{reservation_id}")
-async def api_cancel_pre_market_reservation(reservation_id: int):
+def api_cancel_pre_market_reservation(reservation_id: int):
     """장전 시간외 예약 취소 API."""
     ok = cancel_pre_market_reservation(reservation_id)
     if ok:
