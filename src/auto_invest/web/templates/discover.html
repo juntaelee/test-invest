@@ -600,11 +600,11 @@
             html += '<th style="width:60px;" data-sort="change" data-type="num">등락 <span class="sort-icon"></span></th>';
             html += '<th style="width:65px;" data-sort="total" data-type="num">종합 <span class="sort-icon"></span></th>';
             html += '<th style="width:90px;" data-sort="volume" data-type="num">거래량 <span class="sort-icon"></span></th>';
-            html += '<th style="width:90px;" data-sort="tradingval" data-type="num">거래대금 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="strength" data-type="num">체결강도 <span class="sort-icon"></span></th>';
             html += '<th style="width:90px;" data-sort="turnover" data-type="num">회전율 <span class="sort-icon"></span></th>';
             html += '<th style="width:90px;" data-sort="foreign" data-type="num">외국인 <span class="sort-icon"></span></th>';
             html += '<th style="width:90px;" data-sort="institution" data-type="num">기관 <span class="sort-icon"></span></th>';
-            html += '<th style="width:90px;" data-sort="strength" data-type="num">체결강도 <span class="sort-icon"></span></th>';
+            html += '<th style="width:90px;" data-sort="tradingval" data-type="num">거래대금 <span class="sort-icon"></span></th>';
             html += '<th style="width:55px;">매수</th>';
             html += '<th style="width:130px;">예약매수</th>';
             html += '</tr></thead><tbody>';
@@ -627,11 +627,11 @@
                 html += '<td class="num-format ' + _cc(item.change_rate) + '" style="text-align:right;">' + _pct(item.change_rate) + '</td>';
                 html += '<td style="font-weight:700; font-size:16px;">' + item.total_score.toFixed(1) + '</td>';
                 html += '<td><span class="score-bar score-volume" style="width:' + Math.round(item.volume_score / 10 * 40) + 'px"></span>' + item.volume_score.toFixed(1) + '</td>';
-                html += '<td><span class="score-bar score-tradingval" style="width:' + Math.round(item.trading_value_score / 10 * 40) + 'px"></span>' + item.trading_value_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-strength" style="width:' + Math.round(item.strength_score / 10 * 40) + 'px"></span>' + item.strength_score.toFixed(1) + '</td>';
                 html += '<td><span class="score-bar score-turnover" style="width:' + Math.round(item.turnover_score / 10 * 40) + 'px"></span>' + item.turnover_score.toFixed(1) + '</td>';
                 html += '<td><span class="score-bar score-foreign" style="width:' + Math.round(item.foreign_score / 10 * 40) + 'px"></span>' + item.foreign_score.toFixed(1) + '</td>';
                 html += '<td><span class="score-bar score-institution" style="width:' + Math.round(item.institution_score / 10 * 40) + 'px"></span>' + item.institution_score.toFixed(1) + '</td>';
-                html += '<td><span class="score-bar score-strength" style="width:' + Math.round(item.strength_score / 10 * 40) + 'px"></span>' + item.strength_score.toFixed(1) + '</td>';
+                html += '<td><span class="score-bar score-tradingval" style="width:' + Math.round(item.trading_value_score / 10 * 40) + 'px"></span>' + item.trading_value_score.toFixed(1) + '</td>';
                 html += '<td><button class="buy-btn" onclick="openBuyModal(\'' + _esc(item.stock_code) + '\', \'' + _esc(item.stock_name) + '\')">매수</button></td>';
                 html += '<td style="white-space:nowrap;">'
                       + '<button class="premarket-btn" onclick="openReservationModal(\'' + _esc(item.stock_code) + '\', \'' + _esc(item.stock_name) + '\', \'pre_market\')" title="08:30 장전 시간외">08:30</button> '
