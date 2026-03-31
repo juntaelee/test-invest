@@ -124,6 +124,14 @@ def get_trading_value_rank(
     return _volume_rank_common("3", market, max_items)
 
 
+def get_turnover_rank(
+    market: str = "ALL",
+    max_items: int = 30,
+) -> list[dict]:
+    """회전율 순위 조회 (평균거래회전율 기준)."""
+    return _volume_rank_common("2", market, max_items)
+
+
 def get_investor_trend(stock_code: str) -> dict:
     """종목별 투자자 매매동향 조회 (당일).
 

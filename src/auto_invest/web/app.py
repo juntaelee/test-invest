@@ -29,7 +29,7 @@ from auto_invest.core.trading import (
 )
 from auto_invest.strategy.kr_etf import lookup_stock_name
 from auto_invest.strategy.recommender import RecommendationReport, run_recommendation
-from auto_invest.strategy.scanner import run_scanner
+from auto_invest.strategy.scanner import run_scanner, run_scanner2
 from auto_invest.utils import cache
 
 logger = logging.getLogger(__name__)
@@ -310,6 +310,49 @@ def api_discover_status():
 def discover_refresh():
     """발굴 캐시 무시하고 새로 조회."""
     run_scanner(top_n=30, force_refresh=True)
+    return {"success": True}
+
+
+# ── 발굴2 엔드포인트 ─────────────────────────────────────
+
+
+@app.get("/discover2", response_class=HTMLResponse)
+async def discover2_page(request: Request):
+    """발굴2 페이지 (회전율 × 체결강도)."""
+    return templates.TemplateResponse(request, "discover2.html", {})
+
+
+@app.get("/api/discover2-data")
+def api_discover2_data(cache_only: bool = False):
+    """발굴2 데이터 JSON API."""
+    report = run_scanner2(cache_only=cache_only)
+    if report is None:
+        return {"empty": True}
+
+    kst = timezone(timedelta(hours=9))
+    cached_at_str = ""
+    if report.cached_at:
+        cached_at_str = datetime.fromtimestamp(report.cached_at, tz=kst).strftime(
+            "%Y-%m-%d %H:%M:%S KST"
+        )
+
+    result = report.to_dict()
+    result["cached_at"] = cached_at_str
+    return result
+
+
+@app.get("/api/discover2-status")
+def api_discover2_status():
+    """발굴2 스캐너 실행 상태 조회."""
+    from auto_invest.strategy.scanner import is_scanning2
+
+    return {"scanning": is_scanning2()}
+
+
+@app.post("/discover2/refresh")
+def discover2_refresh():
+    """발굴2 캐시 무시하고 새로 조회."""
+    run_scanner2(force_refresh=True)
     return {"success": True}
 
 

@@ -16,6 +16,7 @@ from auto_invest.api.kis_market import (
     get_investor_trend,
     get_trade_strength,
     get_trading_value_rank,
+    get_turnover_rank,
     get_volume_rank,
 )
 from auto_invest.utils import cache
@@ -446,4 +447,167 @@ def _run_scanner_impl(top_n: int) -> DiscoverReport:
 
     report.cached_at = cache.put(_CACHE_KEY, report.to_dict())
     logger.info("발굴 완료: %d개 종목", len(items))
+    return report
+
+
+# ── 발굴2: 회전율 × 체결강도 교집합 스캐너 ──────────────────
+
+_CACHE_KEY2 = "scanner:discover2"
+_scanning2 = False
+_scanning2_lock = threading.Lock()
+
+
+@dataclass
+class Discover2Item:
+    """발굴2 종목 (회전율 + 체결강도)."""
+
+    stock_code: str
+    stock_name: str
+    turnover_rate: float
+    trade_strength: float
+    current_price: int = 0
+    change_rate: float = 0.0
+    volume: int = 0
+    volume_rate: float = 0.0
+    trading_value: int = 0
+
+
+@dataclass
+class Discover2Report:
+    """발굴2 보고서."""
+
+    timestamp: str
+    items: list[Discover2Item] = field(default_factory=list)
+    cached_at: float | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "timestamp": self.timestamp,
+            "items": [asdict(i) for i in self.items],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Discover2Report":
+        return cls(
+            timestamp=data["timestamp"],
+            items=[Discover2Item(**i) for i in data.get("items", [])],
+        )
+
+
+def is_scanning2() -> bool:
+    """발굴2 스캐너가 현재 실행 중인지 반환."""
+    return _scanning2
+
+
+def run_scanner2(
+    force_refresh: bool = False,
+    cache_only: bool = False,
+) -> Discover2Report | None:
+    """발굴2 스캐너: 회전율 × 체결강도 교집합."""
+    if not force_refresh:
+        cached, cached_at = cache.get(_CACHE_KEY2, ttl_seconds=CACHE_TTL_SECONDS)
+        if cached is not None:
+            logger.info("[발굴2] 캐시 사용")
+            report = Discover2Report.from_dict(cached)
+            report.cached_at = cached_at
+            return report
+
+    if cache_only:
+        return None
+
+    global _scanning2
+    with _scanning2_lock:
+        if _scanning2:
+            logger.info("[발굴2] 이미 실행 중 — 캐시 반환 시도")
+            cached, cached_at = cache.get(_CACHE_KEY2, ttl_seconds=None)
+            if cached is not None:
+                report = Discover2Report.from_dict(cached)
+                report.cached_at = cached_at
+                return report
+            return None
+        _scanning2 = True
+
+    logger.info("[발굴2] 스캐너 시작")
+    try:
+        return _run_scanner2_impl()
+    finally:
+        with _scanning2_lock:
+            _scanning2 = False
+
+
+def _run_scanner2_impl() -> Discover2Report:
+    """발굴2 스캐너 본체."""
+    # 1. 거래량 순위 30개 + 회전율 순위 30개 병렬 조회
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_volume = pool.submit(get_volume_rank, max_items=30)
+        f_turnover = pool.submit(get_turnover_rank, max_items=30)
+    volume_data = f_volume.result()
+    turnover_data = f_turnover.result()
+
+    # 2. 합집합에서 회전율 > 0인 종목 추출
+    stock_info: dict[str, dict] = {}
+    for item in volume_data + turnover_data:
+        code = item["stock_code"]
+        if code in stock_info:
+            # 회전율이 더 높은 쪽 우선
+            if item["turnover_rate"] > stock_info[code]["turnover_rate"]:
+                stock_info[code].update(item)
+            continue
+        stock_info[code] = {
+            "name": item["stock_name"],
+            "turnover_rate": item["turnover_rate"],
+            "current_price": item["current_price"],
+            "change_rate": item["change_rate"],
+            "volume": item["volume"],
+            "volume_rate": item["volume_rate"],
+            "trading_value": item.get("trading_value", 0),
+        }
+
+    # 회전율 > 0인 종목만
+    candidates = {
+        code: info for code, info in stock_info.items()
+        if info["turnover_rate"] > 0 and not _is_large_cap(code)
+    }
+    logger.info("[발굴2] 회전율>0 후보: %d종목", len(candidates))
+
+    # 3. 후보 종목의 체결강도 병렬 조회
+    strength_map: dict[str, float] = {}
+
+    def _fetch_strength(code: str) -> tuple[str, float | None]:
+        return code, get_trade_strength(code)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = pool.map(_fetch_strength, candidates.keys())
+
+    for code, val in results:
+        if val is not None and val > 100:
+            strength_map[code] = val
+
+    logger.info("[발굴2] 체결강도 매수우위: %d종목", len(strength_map))
+
+    # 4. 교집합: 회전율 > 0 AND 체결강도 > 100
+    items: list[Discover2Item] = []
+    for code, strength_val in strength_map.items():
+        info = candidates[code]
+        items.append(Discover2Item(
+            stock_code=code,
+            stock_name=info["name"],
+            turnover_rate=info["turnover_rate"],
+            trade_strength=strength_val,
+            current_price=info["current_price"],
+            change_rate=info["change_rate"],
+            volume=info["volume"],
+            volume_rate=info["volume_rate"],
+            trading_value=info["trading_value"],
+        ))
+
+    # 체결강도 내림차순 정렬
+    items.sort(key=lambda x: x.trade_strength, reverse=True)
+
+    report = Discover2Report(
+        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        items=items,
+    )
+    report.cached_at = cache.put(_CACHE_KEY2, report.to_dict())
+    logger.info("[발굴2] 완료: %d개 종목 (교집합)", len(items))
     return report
