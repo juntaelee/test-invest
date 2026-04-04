@@ -21,13 +21,15 @@
         .flat { color: #8b949e; }
 
         /* ── 상단 고정 바 ── */
-        .top-bar {
+        .fixed-header {
             position: sticky;
             top: 0;
             z-index: 100;
             background: #161b22;
+        }
+        .top-bar {
             border-bottom: 1px solid #30363d;
-            padding: 12px 16px;
+            padding: 10px 16px;
         }
         .top-row {
             display: flex;
@@ -83,9 +85,6 @@
             display: flex;
             background: #161b22;
             border-bottom: 1px solid #30363d;
-            position: sticky;
-            top: 72px;
-            z-index: 99;
         }
         .tab-btn {
             flex: 1;
@@ -183,19 +182,47 @@
         }
         .sparkline-box {
             flex: 1;
-            height: 32px;
+            height: 76px;
             background: #0d1117;
-            border-radius: 4px;
+            border-radius: 6px;
             overflow: hidden;
             position: relative;
+            padding: 2px;
         }
         .sparkline-box svg { width: 100%; height: 100%; }
         .sparkline-label {
             position: absolute;
-            top: 2px;
-            left: 4px;
-            font-size: 9px;
+            top: 3px;
+            left: 6px;
+            font-size: 11px;
             color: #6e7681;
+        }
+        .sparkline-value {
+            position: absolute;
+            top: 3px;
+            right: 6px;
+            font-size: 13px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #c9d1d9;
+        }
+        .sparkline-range {
+            position: absolute;
+            bottom: 3px;
+            left: 6px;
+            font-size: 10px;
+            color: #6e7681;
+            display: flex;
+            gap: 8px;
+        }
+        .sparkline-range .hi { color: #f85149; }
+        .sparkline-range .lo { color: #58a6ff; }
+        .sparkline-time {
+            position: absolute;
+            bottom: 3px;
+            right: 6px;
+            font-size: 10px;
+            color: #484f58;
         }
 
         /* 비율 매수/매도 버튼 */
@@ -435,8 +462,15 @@
         }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
-        /* 새로고침 버튼 */
-        .refresh-btn {
+        /* 새로고침 영역 */
+        .refresh-area {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+        /* 설정 저장 버튼 재사용 */
+        .save-btn {
             background: #238636;
             color: #fff;
             border: none;
@@ -446,13 +480,33 @@
             cursor: pointer;
             font-weight: 500;
         }
-        .refresh-btn:hover:not(:disabled) { background: #2ea043; }
-        .refresh-btn:disabled { background: #30363d; color: #484f58; cursor: not-allowed; }
+        .save-btn:hover { background: #2ea043; }
+        .auto-refresh-toggle {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 11px;
+            color: #8b949e;
+        }
+        .auto-refresh-toggle .toggle { width: 36px; height: 20px; }
+        .auto-refresh-toggle .toggle .slider::before {
+            width: 14px; height: 14px; top: 3px; left: 3px;
+        }
+        .auto-refresh-toggle .toggle input:checked + .slider::before { transform: translateX(16px); }
+        .countdown {
+            font-size: 11px;
+            color: #6e7681;
+            font-variant-numeric: tabular-nums;
+            min-width: 24px;
+            text-align: center;
+        }
+        .countdown.active { color: #58a6ff; }
     </style>
 </head>
 <body>
 
-<!-- 상단 고정 바 -->
+<!-- 상단 고정 (상단바 + 탭) -->
+<div class="fixed-header">
 <div class="top-bar">
     <div class="top-row">
         <div class="buying-power">매수가능 <span id="buying-power-amount">-</span>원</div>
@@ -473,6 +527,7 @@
     <button class="tab-btn" data-tab="holdings" onclick="switchTab('holdings')">보유 종목</button>
     <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">설정</button>
 </div>
+</div><!-- /fixed-header -->
 
 <div class="content-wrap">
 
@@ -485,7 +540,16 @@
         <div class="filter-sep"></div>
         <button class="filter-btn active" id="filter-hide-excluded" onclick="toggleFilter('excluded')">제외 숨김</button>
         <button class="filter-btn" id="filter-hide-departed" onclick="toggleFilter('departed')">이탈 숨김</button>
-        <button class="refresh-btn" id="scan-refresh-btn" onclick="refreshScan()">새로고침</button>
+        <div class="refresh-area">
+            <div class="auto-refresh-toggle">
+                <span>자동갱신</span>
+                <label class="toggle">
+                    <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh(this.checked)">
+                    <span class="slider"></span>
+                </label>
+                <span class="countdown" id="refresh-countdown"></span>
+            </div>
+        </div>
     </div>
     <div id="discover-list">
         <div class="skeleton"></div>
@@ -544,14 +608,14 @@
             </div>
         </div>
     </div>
-    <button class="refresh-btn" style="width:100%;padding:12px;font-size:14px;" onclick="saveSettings()">설정 저장</button>
+    <button class="save-btn" style="width:100%;padding:12px;font-size:14px;" onclick="saveSettings()">설정 저장</button>
 </div>
 
 </div><!-- /content-wrap -->
 
 <!-- 하단 상태바 -->
 <div class="status-bar">
-    <span>자동 갱신 30초 | 마지막 <span id="last-update">-</span></span>
+    <span id="status-refresh-info">수동 갱신</span> | 마지막 <span id="last-update">-</span>
     <span id="scan-status"></span>
 </div>
 
@@ -581,7 +645,10 @@ var state = {
     hideExcluded: true,
     hideDeparted: false,
     timeseries: {},  // code -> [{timestamp, trade_strength, ...}]
-    prevStockCodes: new Set()
+    prevStockCodes: new Set(),
+    autoRefresh: false,
+    refreshInterval: 30,  // 초
+    refreshCountdown: 0
 };
 
 var pendingAction = null;
@@ -723,8 +790,20 @@ function renderDiscoverList() {
 
         // 스파크라인
         html += '<div class="sparkline-row">';
-        html += '<div class="sparkline-box"><span class="sparkline-label">체결강도</span><svg id="spark-str-' + s.stock_code + '"></svg></div>';
-        html += '<div class="sparkline-box"><span class="sparkline-label">등락률</span><svg id="spark-chg-' + s.stock_code + '"></svg></div>';
+        html += '<div class="sparkline-box">';
+        html += '<span class="sparkline-label">체결강도</span>';
+        html += '<span class="sparkline-value" id="spark-val-str-' + s.stock_code + '"></span>';
+        html += '<svg id="spark-str-' + s.stock_code + '"></svg>';
+        html += '<span class="sparkline-range" id="spark-range-str-' + s.stock_code + '"></span>';
+        html += '<span class="sparkline-time" id="spark-time-str-' + s.stock_code + '"></span>';
+        html += '</div>';
+        html += '<div class="sparkline-box">';
+        html += '<span class="sparkline-label">등락률</span>';
+        html += '<span class="sparkline-value" id="spark-val-chg-' + s.stock_code + '"></span>';
+        html += '<svg id="spark-chg-' + s.stock_code + '"></svg>';
+        html += '<span class="sparkline-range" id="spark-range-chg-' + s.stock_code + '"></span>';
+        html += '<span class="sparkline-time" id="spark-time-chg-' + s.stock_code + '"></span>';
+        html += '</div>';
         html += '</div>';
 
         // 비율 매수 버튼 (active만)
@@ -800,8 +879,48 @@ function renderSparkline(code) {
     var series = state.timeseries[code];
     if (!series || series.length < 2) return;
 
-    drawSpark('spark-str-' + code, series.map(function(d) { return d.trade_strength; }), '#58a6ff');
-    drawSpark('spark-chg-' + code, series.map(function(d) { return d.change_rate; }), '#f0883e');
+    var strVals = series.map(function(d) { return d.trade_strength; }).filter(function(v) { return v != null; });
+    var chgVals = series.map(function(d) { return d.change_rate; }).filter(function(v) { return v != null; });
+
+    // 시간 범위
+    var firstTs = series[0].timestamp || '';
+    var lastTs = series[series.length - 1].timestamp || '';
+    var firstTime = firstTs.split('T')[1] ? firstTs.split('T')[1].substring(0, 5) : '';
+    var lastTime = lastTs.split('T')[1] ? lastTs.split('T')[1].substring(0, 5) : '';
+    var timeText = firstTime + '~' + lastTime + ' (' + series.length + ')';
+
+    // 체결강도
+    if (strVals.length >= 2) {
+        drawSpark('spark-str-' + code, strVals, '#58a6ff');
+        var strLast = strVals[strVals.length - 1];
+        var strHi = Math.max.apply(null, strVals);
+        var strLo = Math.min.apply(null, strVals);
+        setText('spark-val-str-' + code, strLast.toFixed(1));
+        setHtml('spark-range-str-' + code, '<span class="hi">H ' + strHi.toFixed(1) + '</span><span class="lo">L ' + strLo.toFixed(1) + '</span>');
+        setText('spark-time-str-' + code, timeText);
+    }
+
+    // 등락률
+    if (chgVals.length >= 2) {
+        drawSpark('spark-chg-' + code, chgVals, '#f0883e');
+        var chgLast = chgVals[chgVals.length - 1];
+        var chgHi = Math.max.apply(null, chgVals);
+        var chgLo = Math.min.apply(null, chgVals);
+        var chgColor = chgLast > 0 ? '#f85149' : (chgLast < 0 ? '#58a6ff' : '#8b949e');
+        var el = document.getElementById('spark-val-chg-' + code);
+        if (el) { el.textContent = (chgLast > 0 ? '+' : '') + chgLast.toFixed(2) + '%'; el.style.color = chgColor; }
+        setHtml('spark-range-chg-' + code, '<span class="hi">H ' + (chgHi > 0 ? '+' : '') + chgHi.toFixed(2) + '%</span><span class="lo">L ' + (chgLo > 0 ? '+' : '') + chgLo.toFixed(2) + '%</span>');
+        setText('spark-time-chg-' + code, timeText);
+    }
+}
+
+function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+function setHtml(id, html) {
+    var el = document.getElementById(id);
+    if (el) el.innerHTML = html;
 }
 
 function drawSpark(svgId, values, color) {
@@ -811,15 +930,18 @@ function drawSpark(svgId, values, color) {
     if (values.length < 2) return;
 
     var w = svg.clientWidth || 100;
-    var h = svg.clientHeight || 32;
+    var h = svg.clientHeight || 76;
     var min = Math.min.apply(null, values);
     var max = Math.max.apply(null, values);
     var range = max - min || 1;
-    var pad = 2;
+    var padX = 6;
+    var padTop = 18;  // 상단 라벨 공간
+    var padBot = 16;  // 하단 범위 공간
+    var pad = padX;
 
     var points = values.map(function(v, i) {
-        var x = pad + (w - 2 * pad) * i / (values.length - 1);
-        var y = h - pad - (h - 2 * pad) * (v - min) / range;
+        var x = padX + (w - 2 * padX) * i / (values.length - 1);
+        var y = h - padBot - (h - padTop - padBot) * (v - min) / range;
         return x.toFixed(1) + ',' + y.toFixed(1);
     }).join(' ');
 
@@ -986,22 +1108,50 @@ function toggleFilter(type) {
     renderDiscoverList();
 }
 
-function refreshScan() {
-    var btn = document.getElementById('scan-refresh-btn');
-    btn.disabled = true;
-    btn.textContent = '스캔 중...';
-    fetch('/discover2/refresh', { method: 'POST' })
-    .then(function() {
-        setTimeout(function() {
+// ── 자동 새로고침 ──
+var _autoRefreshTimer = null;
+var _countdownTimer = null;
+
+function toggleAutoRefresh(enabled) {
+    state.autoRefresh = enabled;
+    if (enabled) {
+        state.refreshCountdown = state.refreshInterval;
+        startAutoRefresh();
+        document.getElementById('status-refresh-info').textContent = '자동 갱신 ' + state.refreshInterval + '초';
+    } else {
+        stopAutoRefresh();
+        document.getElementById('status-refresh-info').textContent = '수동 갱신';
+        document.getElementById('refresh-countdown').textContent = '';
+        document.getElementById('refresh-countdown').classList.remove('active');
+    }
+}
+
+function startAutoRefresh() {
+    stopAutoRefresh();
+    updateCountdownDisplay();
+    _countdownTimer = setInterval(function() {
+        state.refreshCountdown--;
+        updateCountdownDisplay();
+        if (state.refreshCountdown <= 0) {
             loadHubData();
-            btn.disabled = false;
-            btn.textContent = '새로고침';
-        }, 1000);
-    })
-    .catch(function() {
-        btn.disabled = false;
-        btn.textContent = '새로고침';
-    });
+            state.refreshCountdown = state.refreshInterval;
+        }
+    }, 1000);
+}
+
+function stopAutoRefresh() {
+    if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+}
+
+function updateCountdownDisplay() {
+    var el = document.getElementById('refresh-countdown');
+    if (state.autoRefresh) {
+        el.textContent = state.refreshCountdown + 's';
+        el.classList.add('active');
+    } else {
+        el.textContent = '';
+        el.classList.remove('active');
+    }
 }
 
 // ── 토스트 ──
@@ -1031,15 +1181,12 @@ function esc(s) {
     return s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
-// ── 초기화 + 폴링 ──
+// ── 초기화 ──
 loadHubData();
 loadBuyingPower();
 loadConfig();
 
-setInterval(function() {
-    loadHubData();
-}, 30000);
-
+// 매수가능금액만 1분 폴링 (자동 새로고침과 무관)
 setInterval(function() {
     loadBuyingPower();
 }, 60000);
