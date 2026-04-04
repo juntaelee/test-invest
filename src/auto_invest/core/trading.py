@@ -17,6 +17,23 @@ KST = timezone(timedelta(hours=9))
 _DB_DIR = Path.home() / ".auto_invest"
 _DB_PATH = _DB_DIR / "cache.db"
 
+_CREATE_AUTO_TRADE_CONFIG = """
+CREATE TABLE IF NOT EXISTS auto_trade_config (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+)
+"""
+
+_AUTO_TRADE_DEFAULTS = {
+    "auto_buy_enabled": "false",
+    "auto_buy_strength_min": "120",
+    "auto_buy_change_max": "20",
+    "auto_buy_ratio": "30",
+    "auto_buy_fixed_amount": "0",
+    "auto_sell_tp": "5",
+    "auto_sell_sl": "-5",
+}
+
 _CREATE_POSITIONS = """
 CREATE TABLE IF NOT EXISTS positions (
     stock_code TEXT PRIMARY KEY,
@@ -57,6 +74,7 @@ def _get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(str(_DB_PATH), timeout=5)
     conn.execute(_CREATE_POSITIONS)
     conn.execute(_CREATE_PRE_MARKET_RESERVATIONS)
+    conn.execute(_CREATE_AUTO_TRADE_CONFIG)
     # 기존 테이블에 reservation_type 컬럼이 없으면 추가
     try:
         conn.execute(_MIGRATE_ADD_RESERVATION_TYPE)
@@ -418,3 +436,83 @@ def get_portfolio() -> list[dict]:
         })
 
     return portfolio
+
+
+# ── 자동매매 설정 ──────────────────────────────────────────
+
+
+def get_auto_trade_config() -> dict[str, str]:
+    """자동매매 설정 전체를 조회한다. 미설정 항목은 기본값 반환."""
+    result = dict(_AUTO_TRADE_DEFAULTS)
+    try:
+        with _get_conn() as conn:
+            rows = conn.execute("SELECT key, value FROM auto_trade_config").fetchall()
+        for key, value in rows:
+            result[key] = value
+    except sqlite3.Error:
+        logger.warning("자동매매 설정 조회 실패", exc_info=True)
+    return result
+
+
+def set_auto_trade_config(key: str, value: str) -> bool:
+    """자동매매 설정 값을 저장한다."""
+    try:
+        with _get_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO auto_trade_config (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+            return True
+    except sqlite3.Error:
+        logger.warning("자동매매 설정 저장 실패: %s", key, exc_info=True)
+        return False
+
+
+def update_auto_trade_config(updates: dict[str, str]) -> bool:
+    """자동매매 설정을 일괄 업데이트한다."""
+    try:
+        with _get_conn() as conn:
+            for key, value in updates.items():
+                conn.execute(
+                    "INSERT OR REPLACE INTO auto_trade_config (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+            return True
+    except sqlite3.Error:
+        logger.warning("자동매매 설정 일괄 저장 실패", exc_info=True)
+        return False
+
+
+def is_auto_buy_enabled() -> bool:
+    """자동매수 활성화 여부."""
+    config = get_auto_trade_config()
+    return config.get("auto_buy_enabled", "false") == "true"
+
+
+def toggle_auto_buy(enabled: bool, buying_power: int = 0) -> dict:
+    """자동매수 ON/OFF 토글.
+
+    ON 시 매수가능금액 × 비율로 1회 매수금액을 고정한다.
+    """
+    config = get_auto_trade_config()
+
+    if enabled:
+        ratio = int(config.get("auto_buy_ratio", "30"))
+        fixed_amount = int(buying_power * ratio / 100)
+        set_auto_trade_config("auto_buy_enabled", "true")
+        set_auto_trade_config("auto_buy_fixed_amount", str(fixed_amount))
+        logger.info(
+            "자동매수 ON: 매수가능=%d, 비율=%d%%, 1회금액=%d",
+            buying_power, ratio, fixed_amount,
+        )
+        return {
+            "enabled": True,
+            "fixed_amount": fixed_amount,
+            "ratio": ratio,
+            "buying_power": buying_power,
+        }
+    else:
+        set_auto_trade_config("auto_buy_enabled", "false")
+        set_auto_trade_config("auto_buy_fixed_amount", "0")
+        logger.info("자동매수 OFF")
+        return {"enabled": False, "fixed_amount": 0}

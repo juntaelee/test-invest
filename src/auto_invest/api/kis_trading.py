@@ -94,6 +94,39 @@ def get_balance() -> list[dict]:
     return holdings
 
 
+def get_buying_power() -> int:
+    """매수가능금액을 조회한다.
+
+    Returns:
+        매수가능금액 (원). 실패 시 0.
+    """
+    tr_id = "VTTC8908R" if settings.is_paper else "TTTC8908R"
+    url = f"{settings.base_url}/uapi/domestic-stock/v1/trading/inquire-psbl-order"
+    headers = auth.get_headers(tr_id=tr_id)
+    params = {
+        "CANO": settings.kis_account_no,
+        "ACNT_PRDT_CD": settings.kis_acnt_prdt_cd,
+        "PDNO": "005930",  # 아무 종목 (매수가능금액 조회용)
+        "ORD_UNPR": "0",
+        "ORD_DVSN": "01",
+        "CMA_EVLU_AMT_ICLD_YN": "Y",
+        "OVRS_ICLD_YN": "N",
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("rt_cd") != "0":
+            logger.error("매수가능금액 조회 실패: %s", data.get("msg1"))
+            return 0
+        output = data.get("output", {})
+        return int(output.get("nrcvb_buy_amt", "0"))
+    except Exception:
+        logger.exception("매수가능금액 조회 중 오류")
+        return 0
+
+
 def buy_order(stock_code: str, quantity: int) -> dict:
     """시장가 매수 주문.
 

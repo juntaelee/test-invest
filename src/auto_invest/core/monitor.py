@@ -1,7 +1,11 @@
-"""TP/SL 자동 체크 & 매도 스케줄러.
+"""스케줄러: TP/SL 모니터 + 듀얼 스캔/추적 + 자동매매.
 
-1분 간격으로 포트폴리오를 조회하여 익절/손절 조건 도달 시
-시장가 전량 매도를 실행한다. 장 운영시간(09:00~15:30 KST, 평일)에만 동작.
+- TP/SL 체크: 1분 간격
+- 스캔 (무거운): 3분 간격 — 전체 순위 조회 + 발굴 목록 갱신
+- 추적 (가벼운): 30초 간격 — 발굴/이탈 종목 현재가/체결강도 업데이트
+- 자동매수: 스캔 후 조건 충족 종목 자동 매수
+- 장 종료(15:30) 시 자동매수 OFF
+- 장 시작 시 전일 시계열/발굴 목록 클리어
 """
 
 import logging
@@ -10,23 +14,37 @@ from datetime import datetime, timedelta, timezone
 
 import schedule
 
+from auto_invest.api.kis_trading import get_buying_power
 from auto_invest.core.trading import (
+    execute_buy,
     execute_pre_market_reservation,
     execute_sell,
+    get_auto_trade_config,
     get_pending_pre_market_reservations,
     get_portfolio,
+    is_auto_buy_enabled,
+    set_auto_trade_config,
 )
-from auto_invest.strategy.scanner import run_scanner2
+from auto_invest.strategy.scanner import (
+    clear_discovered,
+    get_discovered_stocks,
+    run_scanner2,
+    track_stocks,
+)
+from auto_invest.utils.timeseries import clear_old_data
 
 logger = logging.getLogger(__name__)
 
 KST = timezone(timedelta(hours=9))
 
+# 자동매수로 이미 매수한 종목 (당일, 중복 매수 방지)
+_auto_bought_today: set[str] = set()
+_auto_bought_date: str = ""
+
 
 def is_market_open() -> bool:
     """현재 KST 시각이 장 운영시간(평일 09:00~15:30)인지 확인."""
     now = datetime.now(tz=KST)
-    # 월(0)~금(4)만 허용
     if now.weekday() >= 5:
         return False
     market_open = now.replace(hour=9, minute=0, second=0, microsecond=0)
@@ -34,16 +52,15 @@ def is_market_open() -> bool:
     return market_open <= now <= market_close
 
 
+# ── 장전/장개시 예약 ──────────────────────────────────────
+
 _pre_market_executed_today: bool = False
 _pre_market_executed_date: str = ""
 _market_open_executed_today: bool = False
 _market_open_executed_date: str = ""
 
 
-def _execute_reservations(
-    reservation_type: str,
-    label: str,
-) -> None:
+def _execute_reservations(reservation_type: str, label: str) -> None:
     """지정 타입의 pending 예약을 일괄 실행한다."""
     reservations = get_pending_pre_market_reservations(
         reservation_type=reservation_type,
@@ -118,6 +135,8 @@ def check_market_open_reservations() -> None:
     _execute_reservations("market_open", "장개시 매수")
 
 
+# ── TP/SL 체크 ──────────────────────────────────────────
+
 def check_tp_sl() -> None:
     """포트폴리오 조회 → TP/SL 도달 종목 자동 매도."""
     if not is_market_open():
@@ -161,33 +180,181 @@ def check_tp_sl() -> None:
                 logger.error("SL 매도 실패: %s %s", name, result.get("message"))
 
 
-def auto_scan2() -> None:
-    """장중 3분마다 발굴2 스캐너 자동 실행."""
+# ── 스캔 + 자동매수 ──────────────────────────────────────
+
+def auto_scan() -> None:
+    """장중 3분마다 발굴 스캐너 실행 + 자동매수."""
     if not is_market_open():
         return
 
-    logger.info("[자동스캔] 발굴2 스캐너 시작")
+    logger.info("[자동스캔] 스캐너 시작")
     try:
         run_scanner2(force_refresh=True)
-        logger.info("[자동스캔] 발굴2 스캐너 완료")
+        logger.info("[자동스캔] 스캐너 완료")
     except Exception:
-        logger.warning("[자동스캔] 발굴2 스캐너 실패", exc_info=True)
+        logger.warning("[자동스캔] 스캐너 실패", exc_info=True)
+        return
 
+    # 자동매수 체크
+    if is_auto_buy_enabled():
+        _execute_auto_buy()
+
+
+def _execute_auto_buy() -> None:
+    """조건 충족 종목 자동 매수."""
+    global _auto_bought_today, _auto_bought_date  # noqa: PLW0603
+
+    now = datetime.now(tz=KST)
+    today = now.strftime("%Y-%m-%d")
+    if _auto_bought_date != today:
+        _auto_bought_today = set()
+        _auto_bought_date = today
+
+    config = get_auto_trade_config()
+    strength_min = float(config.get("auto_buy_strength_min", "120"))
+    change_max = float(config.get("auto_buy_change_max", "20"))
+    fixed_amount = int(config.get("auto_buy_fixed_amount", "0"))
+    tp_pct = float(config.get("auto_sell_tp", "5"))
+    sl_pct = float(config.get("auto_sell_sl", "-5"))
+
+    if fixed_amount <= 0:
+        logger.warning("[자동매수] 1회 매수금액이 0 — 스킵")
+        return
+
+    stocks = get_discovered_stocks()
+    for stock in stocks:
+        code = stock["stock_code"]
+        name = stock["stock_name"]
+
+        if stock["status"] != "active":
+            continue
+        if code in _auto_bought_today:
+            continue
+        if stock["trade_strength"] < strength_min:
+            continue
+        if stock["change_rate"] >= change_max:
+            continue
+        if stock["current_price"] <= 0:
+            continue
+
+        # 매수 수량 계산
+        quantity = fixed_amount // stock["current_price"]
+        if quantity <= 0:
+            continue
+
+        # 매수가능금액 확인
+        buying_power = get_buying_power()
+        cost = stock["current_price"] * quantity
+        if buying_power < cost:
+            logger.info("[자동매수] 잔액 부족: %s (필요=%d, 가용=%d)", name, cost, buying_power)
+            continue
+
+        logger.info(
+            "[자동매수] 매수 실행: %s(%s) %d주 × %d원 = %d원",
+            name, code, quantity, stock["current_price"], cost,
+        )
+        result = execute_buy(
+            stock_code=code,
+            stock_name=name,
+            quantity=quantity,
+            tp_pct=tp_pct,
+            sl_pct=sl_pct,
+        )
+        if result["success"]:
+            _auto_bought_today.add(code)
+            logger.info("[자동매수] 성공: %s 주문번호=%s", name, result.get("order_no"))
+        else:
+            logger.error("[자동매수] 실패: %s %s", name, result.get("message"))
+
+
+# ── 추적 (가벼운 업데이트) ──────────────────────────────
+
+def auto_track() -> None:
+    """장중 30초마다 발굴/이탈 종목 추적."""
+    if not is_market_open():
+        return
+    try:
+        count = track_stocks()
+        if count > 0:
+            logger.debug("[추적] %d종목 업데이트", count)
+    except Exception:
+        logger.warning("[추적] 실패", exc_info=True)
+
+
+# ── 장 시작/종료 처리 ────────────────────────────────────
+
+_day_init_done_date: str = ""
+_day_close_done_date: str = ""
+
+
+def check_day_init() -> None:
+    """장 시작 시 (08:50) 전일 데이터 클리어."""
+    global _day_init_done_date  # noqa: PLW0603
+
+    now = datetime.now(tz=KST)
+    today = now.strftime("%Y-%m-%d")
+    if _day_init_done_date == today:
+        return
+    if now.weekday() >= 5:
+        return
+
+    target = now.replace(hour=8, minute=50, second=0, microsecond=0)
+    if now < target:
+        return
+
+    _day_init_done_date = today
+    clear_old_data()
+    clear_discovered()
+    logger.info("[장시작] 전일 데이터 클리어 완료")
+
+
+def check_day_close() -> None:
+    """장 종료 시 (15:30) 자동매수 OFF."""
+    global _day_close_done_date  # noqa: PLW0603
+
+    now = datetime.now(tz=KST)
+    today = now.strftime("%Y-%m-%d")
+    if _day_close_done_date == today:
+        return
+    if now.weekday() >= 5:
+        return
+
+    target = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    if now < target:
+        return
+
+    _day_close_done_date = today
+    if is_auto_buy_enabled():
+        set_auto_trade_config("auto_buy_enabled", "false")
+        set_auto_trade_config("auto_buy_fixed_amount", "0")
+        logger.info("[장종료] 자동매수 OFF")
+
+
+# ── 스케줄러 실행 ────────────────────────────────────────
 
 def start_scheduler(stop_event: threading.Event) -> None:
-    """schedule 루프 실행 (스레드용).
-
-    stop_event가 set되면 루프를 종료한다.
-    """
+    """schedule 루프 실행 (스레드용)."""
+    # TP/SL 모니터
     schedule.every(1).minutes.do(check_tp_sl)
+    # 스캔 (무거운) — 3분
+    schedule.every(3).minutes.do(auto_scan)
+    # 추적 (가벼운) — 30초
+    schedule.every(30).seconds.do(auto_track)
+    # 예약 처리
     schedule.every(10).seconds.do(check_pre_market_reservations)
     schedule.every(10).seconds.do(check_market_open_reservations)
-    schedule.every(3).minutes.do(auto_scan2)
-    logger.info("스케줄러 시작 (TP/SL 1분, 발굴2 3분, 시간외 08:30, 장개시 09:00)")
+    # 장 시작/종료
+    schedule.every(30).seconds.do(check_day_init)
+    schedule.every(30).seconds.do(check_day_close)
+
+    logger.info(
+        "스케줄러 시작 (TP/SL 1분, 스캔 3분, 추적 30초, "
+        "시간외 08:30, 장개시 09:00, 장종료 15:30)"
+    )
 
     while not stop_event.is_set():
         schedule.run_pending()
         stop_event.wait(timeout=1)
 
     schedule.clear()
-    logger.info("TP/SL 모니터 종료")
+    logger.info("스케줄러 종료")

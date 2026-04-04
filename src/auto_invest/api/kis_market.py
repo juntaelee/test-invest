@@ -4,11 +4,13 @@
 """
 
 import logging
+import time
 
 import requests
 
 from auto_invest.api.kis_auth import auth
 from auto_invest.config import settings
+from auto_invest.utils import cache
 
 logger = logging.getLogger(__name__)
 
@@ -369,3 +371,41 @@ def get_stock_price(stock_code: str) -> dict | None:
     except Exception:
         logger.exception("현재가 조회 중 오류 (종목: %s)", stock_code)
         return None
+
+
+# ── 종목명 조회 (WiseReport) ──────────────────────────────
+
+_WISEREPORT_AC_URL = "https://navercomp.wisereport.co.kr/v2/company/autocomplete.aspx"
+_WR_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+_WR_DELAY = 0.3
+_NAME_CACHE_TTL = 86400 * 30  # 30일
+
+
+def lookup_stock_name(code: str) -> str | None:
+    """종목코드로 종목명을 조회 (WiseReport autocomplete)."""
+    cache_key = f"stock_name:{code}"
+    cached, _ = cache.get(cache_key, ttl_seconds=_NAME_CACHE_TTL)
+    if cached is not None:
+        return cached  # type: ignore[return-value]
+
+    try:
+        time.sleep(_WR_DELAY)
+        resp = requests.get(
+            _WISEREPORT_AC_URL,
+            params={"searchVal": code},
+            headers=_WR_HEADERS,
+            timeout=_TIMEOUT,
+        )
+        resp.raise_for_status()
+        results = resp.json()
+        if results and isinstance(results, list):
+            for item in results:
+                if item.get("item_cd", "") == code:
+                    name = item.get("item_nm", "")
+                    if name:
+                        cache.put(cache_key, name)
+                        return name
+    except Exception:
+        logger.warning("종목명 조회 실패: %s", code, exc_info=True)
+
+    return None

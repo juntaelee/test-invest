@@ -1,38 +1,51 @@
 """중소형주 발굴 스캐너.
 
-KIS API의 시장 데이터(거래량/거래대금/회전율 순위, 등락률, 외국인·기관 순매수)를
-조합하여 중소형주 매수 시그널을 발굴한다.
+KIS API의 시장 데이터(거래량/회전율 순위, 체결강도)를 조합하여
+중소형주 매수 시그널을 발굴한다.
 결과는 SQLite에 캐싱한다 (1시간 TTL).
+
+듀얼 스케줄:
+- 스캔 (3분): 전체 순위 조회 + 체결강도 병렬 조회 + 발굴 목록 갱신
+- 추적 (30초): 발굴/이탈 종목의 현재가/체결강도만 업데이트
 """
 
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from auto_invest.api.kis_market import (
-    get_fluctuation_rank,
-    get_investor_trend,
+    get_stock_price,
     get_trade_strength,
-    get_trading_value_rank,
     get_turnover_rank,
     get_volume_rank,
 )
-from auto_invest.utils import cache
+from auto_invest.utils import cache, timeseries
 
 logger = logging.getLogger(__name__)
 
+KST = timezone(timedelta(hours=9))
+
 # 캐시 TTL (초): 1시간
 CACHE_TTL_SECONDS = 3600
-_CACHE_KEY = "scanner:discover"
+_CACHE_KEY = "scanner:discover2"
 
 # 스캐너 실행 상태 추적
 _scanning = False
 _scanning_lock = threading.Lock()
 
+# 가격 필터 (원)
+MIN_PRICE = 2000
+
+# 등락률 상한 (%) — 이 이상은 "제외" 처리
+MAX_CHANGE_RATE = 20.0
+
+# 이탈 종목 추적 시간 (초)
+DEPARTURE_TRACK_SECONDS = 30 * 60  # 30분
+
 # 시총 상위 대형주 제외 기준 (종목코드 기반, 대표 대형주)
-# TODO: 동적으로 시총 순위를 조회하여 필터링하는 것이 이상적
 LARGE_CAP_CODES = {
     "005930",  # 삼성전자
     "000660",  # SK하이닉스
@@ -76,391 +89,98 @@ LARGE_CAP_CODES = {
     "326030",  # SK바이오팜
 }
 
-# 스코어 가중치 (합 = 1.0, 등락률은 카드 표시만, 종합점수 제외)
-VOLUME_WEIGHT = 0.20
-TRADING_VALUE_WEIGHT = 0.20
-FLUCTUATION_WEIGHT = 0.0
-TURNOVER_WEIGHT = 0.15
-FOREIGN_WEIGHT = 0.15
-INSTITUTION_WEIGHT = 0.15
-STRENGTH_WEIGHT = 0.15
-
-SCORE_MAX = 10.0
-MIN_SCORE = 1.0
-CARD_TOP_N = 30
-
-
-@dataclass
-class DiscoverItem:
-    """발굴 종목."""
-
-    stock_code: str
-    stock_name: str
-    total_score: float
-    volume_score: float
-    trading_value_score: float
-    fluctuation_score: float
-    turnover_score: float = 0.0
-    foreign_score: float = 0.0
-    institution_score: float = 0.0
-    strength_score: float = 0.0
-    # 원본 데이터
-    volume: int = 0
-    volume_rate: float = 0.0
-    trading_value: int = 0
-    turnover_rate: float = 0.0
-    foreign_net_qty: int = 0
-    institution_net_qty: int = 0
-    trade_strength: float = 0.0
-    current_price: int = 0
-    change_rate: float = 0.0
-
-
-@dataclass
-class DiscoverReport:
-    """발굴 보고서."""
-
-    timestamp: str
-    volume_top: list[DiscoverItem] = field(default_factory=list)
-    trading_value_top: list[DiscoverItem] = field(default_factory=list)
-    fluctuation_top: list[DiscoverItem] = field(default_factory=list)
-    turnover_top: list[DiscoverItem] = field(default_factory=list)
-    foreign_top: list[DiscoverItem] = field(default_factory=list)
-    institution_top: list[DiscoverItem] = field(default_factory=list)
-    strength_top: list[DiscoverItem] = field(default_factory=list)
-    combined: list[DiscoverItem] = field(default_factory=list)
-    cached_at: float | None = None
-
-    def to_dict(self) -> dict:
-        return {
-            "timestamp": self.timestamp,
-            "volume_top": [asdict(i) for i in self.volume_top],
-            "trading_value_top": [asdict(i) for i in self.trading_value_top],
-            "fluctuation_top": [asdict(i) for i in self.fluctuation_top],
-            "turnover_top": [asdict(i) for i in self.turnover_top],
-            "foreign_top": [asdict(i) for i in self.foreign_top],
-            "institution_top": [asdict(i) for i in self.institution_top],
-            "strength_top": [asdict(i) for i in self.strength_top],
-            "combined": [asdict(i) for i in self.combined],
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "DiscoverReport":
-        return cls(
-            timestamp=data["timestamp"],
-            volume_top=[DiscoverItem(**i) for i in data.get("volume_top", [])],
-            trading_value_top=[DiscoverItem(**i) for i in data.get("trading_value_top", [])],
-            fluctuation_top=[DiscoverItem(**i) for i in data.get("fluctuation_top", [])],
-            turnover_top=[DiscoverItem(**i) for i in data.get("turnover_top", [])],
-            foreign_top=[DiscoverItem(**i) for i in data.get("foreign_top", [])],
-            institution_top=[DiscoverItem(**i) for i in data.get("institution_top", [])],
-            strength_top=[DiscoverItem(**i) for i in data.get("strength_top", [])],
-            combined=[DiscoverItem(**i) for i in data.get("combined", [])],
-        )
-
 
 def _is_large_cap(code: str) -> bool:
     """대형주 여부."""
     return code in LARGE_CAP_CODES
 
 
-def _normalize_scores(raw: dict[str, float]) -> dict[str, float]:
-    """0~SCORE_MAX 범위로 정규화."""
-    if not raw:
-        return {}
-    peak = max(raw.values())
-    if peak <= 0:
-        return {k: 0.0 for k in raw}
-    factor = SCORE_MAX / peak
-    return {k: round(v * factor, 2) for k, v in raw.items()}
-
-
-def run_scanner(
-    top_n: int = 30,
-    force_refresh: bool = False,
-    cache_only: bool = False,
-) -> DiscoverReport | None:
-    """발굴 스캐너 실행.
-
-    Args:
-        top_n: 종합 발굴 종목 수
-        force_refresh: True이면 캐시 무시
-        cache_only: True이면 캐시만 조회, 없으면 None 반환
-
-    Returns:
-        DiscoverReport 또는 cache_only일 때 캐시 없으면 None
-    """
-    if not force_refresh:
-        cached, cached_at = cache.get(_CACHE_KEY, ttl_seconds=CACHE_TTL_SECONDS)
-        if cached is not None:
-            logger.info("발굴 스캐너 캐시 사용")
-            report = DiscoverReport.from_dict(cached)  # type: ignore[arg-type]
-            report.cached_at = cached_at
-            return report
-
-    if cache_only:
-        return None
-
-    global _scanning
-    with _scanning_lock:
-        if _scanning:
-            logger.info("발굴 스캐너가 이미 실행 중 — 캐시 반환 시도")
-            cached, cached_at = cache.get(_CACHE_KEY, ttl_seconds=None)
-            if cached is not None:
-                report = DiscoverReport.from_dict(cached)  # type: ignore[arg-type]
-                report.cached_at = cached_at
-                return report
-            return None
-        _scanning = True
-
-    logger.info("발굴 스캐너 시작 (top_n=%d)", top_n)
-    try:
-        return _run_scanner_impl(top_n)
-    finally:
-        with _scanning_lock:
-            _scanning = False
-
-
-def is_scanning() -> bool:
-    """스캐너가 현재 실행 중인지 반환."""
-    return _scanning
-
-
-def _run_scanner_impl(top_n: int) -> DiscoverReport:
-    """스캐너 본체 (내부 전용)."""
-    # 1. 데이터 수집 (병렬)
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        f_volume = pool.submit(get_volume_rank, max_items=50)
-        f_trading = pool.submit(get_trading_value_rank, max_items=50)
-        f_fluctuation = pool.submit(get_fluctuation_rank, max_items=50)
-    volume_data = f_volume.result()
-    trading_value_data = f_trading.result()
-    fluctuation_data = f_fluctuation.result()
-
-    # 2. 종목 정보 수집
-    stock_info: dict[str, dict] = {}
-
-    # 거래량/회전율 점수 (volume rank API)
-    volume_raw: dict[str, float] = {}
-    turnover_raw: dict[str, float] = {}
-    for item in volume_data:
-        code = item["stock_code"]
-        volume_raw[code] = max(item["volume_rate"], 0)
-        tr = item.get("turnover_rate", 0.0)
-        if tr > 0:
-            turnover_raw[code] = tr
-        stock_info.setdefault(code, {
-            "name": item["stock_name"],
-            "current_price": item["current_price"],
-            "change_rate": item["change_rate"],
-            "volume": item["volume"],
-            "volume_rate": item["volume_rate"],
-            "trading_value": item.get("trading_value", 0),
-            "turnover_rate": tr,
-        })
-
-    # 거래대금 점수 (trading value rank API - 별도 호출)
-    trading_value_raw: dict[str, float] = {}
-    for item in trading_value_data:
-        code = item["stock_code"]
-        tv = item.get("trading_value", 0)
-        if tv > 0:
-            trading_value_raw[code] = float(tv)
-        stock_info.setdefault(code, {
-            "name": item["stock_name"],
-            "current_price": item["current_price"],
-            "change_rate": item["change_rate"],
-            "volume": item["volume"],
-            "volume_rate": item["volume_rate"],
-            "trading_value": tv,
-            "turnover_rate": item.get("turnover_rate", 0),
-        })
-
-    # 등락률 점수 (상승률 기반)
-    fluctuation_raw: dict[str, float] = {}
-    for item in fluctuation_data:
-        code = item["stock_code"]
-        fluctuation_raw[code] = item["change_rate"]
-        stock_info.setdefault(code, {
-            "name": item["stock_name"],
-            "current_price": item["current_price"],
-            "change_rate": item["change_rate"],
-            "volume": item.get("volume", 0),
-            "volume_rate": 0,
-            "trading_value": 0,
-            "turnover_rate": 0,
-        })
-
-    # 외국인/기관 순매수 + 체결강도 (종목별 병렬 조회)
-    all_candidate_codes = set(volume_raw) | set(trading_value_raw) | set(fluctuation_raw)
-    foreign_raw: dict[str, float] = {}
-    institution_raw: dict[str, float] = {}
-    strength_raw: dict[str, float] = {}
-    logger.info("투자자동향+체결강도 병렬 조회 중 (%d종목)...", len(all_candidate_codes))
-
-    def _fetch_per_stock(code: str) -> tuple[str, dict | None, float | None]:
-        trend = get_investor_trend(code)
-        strength = get_trade_strength(code)
-        return code, trend, strength
-
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = pool.map(_fetch_per_stock, all_candidate_codes)
-
-    for code, trend, strength_val in results:
-        if trend:
-            fq = trend["foreign_net_qty"]
-            iq = trend["institution_net_qty"]
-            info = stock_info.get(code)
-            if info:
-                info["foreign_net_qty"] = fq
-                info["institution_net_qty"] = iq
-            if fq > 0:
-                foreign_raw[code] = float(fq)
-            if iq > 0:
-                institution_raw[code] = float(iq)
-        if strength_val is not None:
-            info = stock_info.get(code)
-            if info:
-                info["trade_strength"] = strength_val
-            if strength_val > 100:
-                strength_raw[code] = strength_val - 100
-
-    logger.info("병렬 조회 완료 (외국인 %d, 기관 %d, 체결강도 매수우위 %d)",
-                len(foreign_raw), len(institution_raw), len(strength_raw))
-
-    # 3. 정규화
-    volume_scores = _normalize_scores(volume_raw)
-    trading_value_scores = _normalize_scores(trading_value_raw)
-    fluctuation_scores = _normalize_scores(fluctuation_raw)
-    turnover_scores = _normalize_scores(turnover_raw)
-    foreign_scores = _normalize_scores(foreign_raw)
-    institution_scores = _normalize_scores(institution_raw)
-    strength_scores = _normalize_scores(strength_raw)
-
-    # 4. 종합 점수 산출
-    all_codes = (
-        set(volume_scores)
-        | set(trading_value_scores)
-        | set(fluctuation_scores)
-        | set(turnover_scores)
-        | set(foreign_scores)
-        | set(institution_scores)
-        | set(strength_scores)
-    )
-    items: list[DiscoverItem] = []
-
-    for code in all_codes:
-        info = stock_info.get(code)
-        if not info:
-            continue
-
-        v_score = volume_scores.get(code, 0.0)
-        tv_score = trading_value_scores.get(code, 0.0)
-        f_score = fluctuation_scores.get(code, 0.0)
-        t_score = turnover_scores.get(code, 0.0)
-        fg_score = foreign_scores.get(code, 0.0)
-        ig_score = institution_scores.get(code, 0.0)
-        s_score = strength_scores.get(code, 0.0)
-        total = round(
-            v_score * VOLUME_WEIGHT
-            + tv_score * TRADING_VALUE_WEIGHT
-            + f_score * FLUCTUATION_WEIGHT
-            + t_score * TURNOVER_WEIGHT
-            + fg_score * FOREIGN_WEIGHT
-            + ig_score * INSTITUTION_WEIGHT
-            + s_score * STRENGTH_WEIGHT,
-            2,
-        )
-
-        items.append(DiscoverItem(
-            stock_code=code,
-            stock_name=info["name"],
-            total_score=total,
-            volume_score=v_score,
-            trading_value_score=tv_score,
-            fluctuation_score=f_score,
-            turnover_score=t_score,
-            foreign_score=fg_score,
-            institution_score=ig_score,
-            strength_score=s_score,
-            volume=info.get("volume", 0),
-            volume_rate=info.get("volume_rate", 0),
-            trading_value=info.get("trading_value", 0),
-            turnover_rate=info.get("turnover_rate", 0),
-            foreign_net_qty=info.get("foreign_net_qty", 0),
-            institution_net_qty=info.get("institution_net_qty", 0),
-            trade_strength=info.get("trade_strength", 0),
-            current_price=info.get("current_price", 0),
-            change_rate=info.get("change_rate", 0),
-        ))
-
-    items.sort(key=lambda x: x.total_score, reverse=True)
-
-    # 5. 카테고리별 TOP 리스트 (전체 종목에서 추출)
-    # combined만 MIN_SCORE 필터 적용
-    volume_top = sorted(
-        [i for i in items if i.volume_score > 0],
-        key=lambda x: x.volume_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    trading_value_top = sorted(
-        [i for i in items if i.trading_value_score > 0],
-        key=lambda x: x.trading_value_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    fluctuation_top = sorted(
-        [i for i in items if i.fluctuation_score > 0],
-        key=lambda x: x.fluctuation_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    turnover_top = sorted(
-        [i for i in items if i.turnover_score > 0],
-        key=lambda x: x.turnover_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    foreign_top = sorted(
-        [i for i in items if i.foreign_score > 0],
-        key=lambda x: x.foreign_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    institution_top = sorted(
-        [i for i in items if i.institution_score > 0],
-        key=lambda x: x.institution_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    strength_top = sorted(
-        [i for i in items if i.strength_score > 0],
-        key=lambda x: x.strength_score, reverse=True,
-    )[:CARD_TOP_N]
-
-    report = DiscoverReport(
-        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        volume_top=volume_top,
-        trading_value_top=trading_value_top,
-        fluctuation_top=fluctuation_top,
-        turnover_top=turnover_top,
-        foreign_top=foreign_top,
-        institution_top=institution_top,
-        strength_top=strength_top,
-        combined=[i for i in items if i.total_score >= MIN_SCORE][:top_n],
-    )
-
-    report.cached_at = cache.put(_CACHE_KEY, report.to_dict())
-    logger.info("발굴 완료: %d개 종목", len(items))
-    return report
-
-
-# ── 발굴2: 회전율 × 체결강도 교집합 스캐너 ──────────────────
-
-_CACHE_KEY2 = "scanner:discover2"
-_scanning2 = False
-_scanning2_lock = threading.Lock()
-
+# ── 종목 상태 관리 (인메모리) ────────────────────────────────
 
 @dataclass
-class Discover2Item:
-    """발굴2 종목 (회전율 + 체결강도)."""
+class StockState:
+    """발굴 종목의 상태."""
+    stock_code: str
+    stock_name: str
+    status: str  # active, departed, excluded
+    turnover_rate: float = 0.0
+    trade_strength: float = 0.0
+    current_price: int = 0
+    change_rate: float = 0.0
+    volume: int = 0
+    volume_rate: float = 0.0
+    trading_value: int = 0
+    first_seen: float = 0.0      # 최초 발견 시각 (unix)
+    departed_at: float | None = None  # 이탈 시각
 
+
+# 발굴 종목 상태 맵 (stock_code → StockState)
+_discovered: dict[str, StockState] = {}
+_discovered_lock = threading.Lock()
+
+
+def get_discovered_stocks() -> list[dict]:
+    """현재 발굴 목록 반환 (active + departed + excluded, expired 제외)."""
+    now = time.time()
+    result: list[dict] = []
+    with _discovered_lock:
+        expired_codes: list[str] = []
+        for code, state in _discovered.items():
+            # expired 판정
+            if (
+                state.status == "departed"
+                and state.departed_at
+                and now - state.departed_at > DEPARTURE_TRACK_SECONDS
+            ):
+                expired_codes.append(code)
+                continue
+            result.append({
+                "stock_code": state.stock_code,
+                "stock_name": state.stock_name,
+                "status": state.status,
+                "turnover_rate": state.turnover_rate,
+                "trade_strength": state.trade_strength,
+                "current_price": state.current_price,
+                "change_rate": state.change_rate,
+                "volume": state.volume,
+                "volume_rate": state.volume_rate,
+                "trading_value": state.trading_value,
+            })
+        for code in expired_codes:
+            del _discovered[code]
+    return result
+
+
+def get_tracking_codes() -> list[str]:
+    """추적 대상 종목코드 리스트 (active + departed)."""
+    now = time.time()
+    codes: list[str] = []
+    with _discovered_lock:
+        for code, state in _discovered.items():
+            if state.status == "excluded":
+                continue
+            if (
+                state.status == "departed"
+                and state.departed_at
+                and now - state.departed_at > DEPARTURE_TRACK_SECONDS
+            ):
+                continue
+            codes.append(code)
+    return codes
+
+
+def clear_discovered() -> None:
+    """발굴 목록 초기화 (장 시작 시)."""
+    with _discovered_lock:
+        _discovered.clear()
+    logger.info("[스캐너] 발굴 목록 초기화")
+
+
+# ── 발굴 종목 데이터 ────────────────────────────────────────
+
+@dataclass
+class DiscoverItem:
+    """발굴 종목."""
     stock_code: str
     stock_name: str
     turnover_rate: float
@@ -470,14 +190,14 @@ class Discover2Item:
     volume: int = 0
     volume_rate: float = 0.0
     trading_value: int = 0
+    status: str = "active"
 
 
 @dataclass
-class Discover2Report:
-    """발굴2 보고서."""
-
+class DiscoverReport:
+    """발굴 보고서."""
     timestamp: str
-    items: list[Discover2Item] = field(default_factory=list)
+    items: list[DiscoverItem] = field(default_factory=list)
     cached_at: float | None = None
 
     def to_dict(self) -> dict:
@@ -487,69 +207,72 @@ class Discover2Report:
         }
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Discover2Report":
+    def from_dict(cls, data: dict) -> "DiscoverReport":
         return cls(
             timestamp=data["timestamp"],
-            items=[Discover2Item(**i) for i in data.get("items", [])],
+            items=[DiscoverItem(**i) for i in data.get("items", [])],
         )
 
 
-def is_scanning2() -> bool:
-    """발굴2 스캐너가 현재 실행 중인지 반환."""
-    return _scanning2
+def is_scanning() -> bool:
+    """스캐너가 현재 실행 중인지 반환."""
+    return _scanning
+
+
+# 하위호환 별칭
+is_scanning2 = is_scanning
 
 
 def run_scanner2(
     force_refresh: bool = False,
     cache_only: bool = False,
-) -> Discover2Report | None:
-    """발굴2 스캐너: 회전율 × 체결강도 교집합."""
+) -> DiscoverReport | None:
+    """발굴 스캐너: 거래량 30 + 회전율 70 합집합 → 체결강도 교집합."""
     if not force_refresh:
-        cached, cached_at = cache.get(_CACHE_KEY2, ttl_seconds=CACHE_TTL_SECONDS)
+        cached, cached_at = cache.get(_CACHE_KEY, ttl_seconds=CACHE_TTL_SECONDS)
         if cached is not None:
-            logger.info("[발굴2] 캐시 사용")
-            report = Discover2Report.from_dict(cached)
+            logger.info("[스캔] 캐시 사용")
+            report = DiscoverReport.from_dict(cached)
             report.cached_at = cached_at
             return report
 
     if cache_only:
         return None
 
-    global _scanning2
-    with _scanning2_lock:
-        if _scanning2:
-            logger.info("[발굴2] 이미 실행 중 — 캐시 반환 시도")
-            cached, cached_at = cache.get(_CACHE_KEY2, ttl_seconds=None)
+    global _scanning  # noqa: PLW0603
+    with _scanning_lock:
+        if _scanning:
+            logger.info("[스캔] 이미 실행 중 — 캐시 반환 시도")
+            cached, cached_at = cache.get(_CACHE_KEY, ttl_seconds=None)
             if cached is not None:
-                report = Discover2Report.from_dict(cached)
+                report = DiscoverReport.from_dict(cached)
                 report.cached_at = cached_at
                 return report
             return None
-        _scanning2 = True
+        _scanning = True
 
-    logger.info("[발굴2] 스캐너 시작")
+    logger.info("[스캔] 스캐너 시작")
     try:
-        return _run_scanner2_impl()
+        return _run_scan_impl()
     finally:
-        with _scanning2_lock:
-            _scanning2 = False
+        with _scanning_lock:
+            _scanning = False
 
 
-def _run_scanner2_impl() -> Discover2Report:
-    """발굴2 스캐너 본체."""
-    # 1. 거래량 순위 30개 + 회전율 순위 30개 병렬 조회
+def _run_scan_impl() -> DiscoverReport:
+    """스캔 본체: 거래량 30 + 회전율 70 → 필터 → 체결강도 → 발굴 목록 갱신."""
+    # 1. 거래량 순위 30개 + 회전율 순위 70개 병렬 조회
     with ThreadPoolExecutor(max_workers=2) as pool:
         f_volume = pool.submit(get_volume_rank, max_items=30)
-        f_turnover = pool.submit(get_turnover_rank, max_items=30)
+        f_turnover = pool.submit(get_turnover_rank, max_items=70)
     volume_data = f_volume.result()
     turnover_data = f_turnover.result()
 
-    # 2. 합집합에서 회전율 > 0인 종목 추출
+    # 2. 합집합 구성
     stock_info: dict[str, dict] = {}
     for item in volume_data + turnover_data:
         code = item["stock_code"]
         if code in stock_info:
-            # 회전율이 더 높은 쪽 우선
             if item["turnover_rate"] > stock_info[code]["turnover_rate"]:
                 stock_info[code].update(item)
             continue
@@ -563,14 +286,27 @@ def _run_scanner2_impl() -> Discover2Report:
             "trading_value": item.get("trading_value", 0),
         }
 
-    # 회전율 > 0인 종목만
-    candidates = {
-        code: info for code, info in stock_info.items()
-        if info["turnover_rate"] > 0 and not _is_large_cap(code)
-    }
-    logger.info("[발굴2] 회전율>0 후보: %d종목", len(candidates))
+    # 3. 필터: 가격 ≥ 2000, 대형주 제외
+    candidates: dict[str, dict] = {}
+    excluded: dict[str, dict] = {}  # 등락률 20%↑
 
-    # 3. 후보 종목의 체결강도 병렬 조회
+    for code, info in stock_info.items():
+        if _is_large_cap(code):
+            continue
+        if info["current_price"] < MIN_PRICE:
+            continue
+        if info["change_rate"] >= MAX_CHANGE_RATE:
+            excluded[code] = info
+            continue
+        if info["turnover_rate"] > 0:
+            candidates[code] = info
+
+    logger.info(
+        "[스캔] 후보: %d종목 (제외: %d종목, 등락률≥%.0f%%)",
+        len(candidates), len(excluded), MAX_CHANGE_RATE,
+    )
+
+    # 4. 후보 종목의 체결강도 병렬 조회 (제외 종목은 스킵)
     strength_map: dict[str, float] = {}
 
     def _fetch_strength(code: str) -> tuple[str, float | None]:
@@ -580,16 +316,22 @@ def _run_scanner2_impl() -> Discover2Report:
         results = pool.map(_fetch_strength, candidates.keys())
 
     for code, val in results:
-        if val is not None and val > 100:
+        if val is not None:
             strength_map[code] = val
 
-    logger.info("[발굴2] 체결강도 매수우위: %d종목", len(strength_map))
+    logger.info("[스캔] 체결강도 조회 완료: %d종목", len(strength_map))
 
-    # 4. 교집합: 회전율 > 0 AND 체결강도 > 100
-    items: list[Discover2Item] = []
-    for code, strength_val in strength_map.items():
-        info = candidates[code]
-        items.append(Discover2Item(
+    # 5. 교집합: 회전율 > 0 AND 체결강도 > 100
+    now_ts = time.time()
+    active_codes: set[str] = set()
+    items: list[DiscoverItem] = []
+
+    for code, info in candidates.items():
+        strength_val = strength_map.get(code)
+        if strength_val is None or strength_val <= 100:
+            continue
+        active_codes.add(code)
+        items.append(DiscoverItem(
             stock_code=code,
             stock_name=info["name"],
             turnover_rate=info["turnover_rate"],
@@ -599,15 +341,139 @@ def _run_scanner2_impl() -> Discover2Report:
             volume=info["volume"],
             volume_rate=info["volume_rate"],
             trading_value=info["trading_value"],
+            status="active",
         ))
 
     # 체결강도 내림차순 정렬
     items.sort(key=lambda x: x.trade_strength, reverse=True)
 
-    report = Discover2Report(
-        timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    # 6. 이탈/제외 종목 상태 갱신
+    with _discovered_lock:
+        prev_codes = {
+            c for c, s in _discovered.items() if s.status == "active"
+        }
+        departed_codes = prev_codes - active_codes
+
+        # 기존 active → departed
+        for code in departed_codes:
+            state = _discovered[code]
+            state.status = "departed"
+            state.departed_at = now_ts
+            logger.info("[스캔] 이탈: %s (%s)", state.stock_name, code)
+
+        # 신규/유지 active 갱신
+        for item in items:
+            code = item.stock_code
+            if code in _discovered:
+                state = _discovered[code]
+                state.status = "active"
+                state.departed_at = None
+            else:
+                state = StockState(
+                    stock_code=code,
+                    stock_name=item.stock_name,
+                    status="active",
+                    first_seen=now_ts,
+                )
+                logger.info("[스캔] 신규: %s (%s)", item.stock_name, code)
+            state.turnover_rate = item.turnover_rate
+            state.trade_strength = item.trade_strength
+            state.current_price = item.current_price
+            state.change_rate = item.change_rate
+            state.volume = item.volume
+            state.volume_rate = item.volume_rate
+            state.trading_value = item.trading_value
+            _discovered[code] = state
+
+        # 제외 종목 등록
+        for code, info in excluded.items():
+            if code not in _discovered:
+                _discovered[code] = StockState(
+                    stock_code=code,
+                    stock_name=info["name"],
+                    status="excluded",
+                    current_price=info["current_price"],
+                    change_rate=info["change_rate"],
+                    turnover_rate=info["turnover_rate"],
+                    volume=info["volume"],
+                    volume_rate=info["volume_rate"],
+                    trading_value=info["trading_value"],
+                    first_seen=now_ts,
+                )
+            else:
+                _discovered[code].status = "excluded"
+                _discovered[code].change_rate = info["change_rate"]
+
+    # 7. 시계열 적재 (active 종목)
+    ts_items = [
+        {
+            "stock_code": item.stock_code,
+            "price": item.current_price,
+            "change_rate": item.change_rate,
+            "trade_strength": item.trade_strength,
+            "turnover_rate": item.turnover_rate,
+            "trading_value": item.trading_value,
+        }
+        for item in items
+    ]
+    if ts_items:
+        timeseries.record_batch(ts_items)
+
+    # 8. 캐시 저장
+    report = DiscoverReport(
+        timestamp=datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S KST"),
         items=items,
     )
-    report.cached_at = cache.put(_CACHE_KEY2, report.to_dict())
-    logger.info("[발굴2] 완료: %d개 종목 (교집합)", len(items))
+    report.cached_at = cache.put(_CACHE_KEY, report.to_dict())
+    logger.info("[스캔] 완료: %d개 종목 (교집합)", len(items))
     return report
+
+
+# ── 추적 (가벼운 업데이트) ──────────────────────────────────
+
+
+def track_stocks() -> int:
+    """발굴/이탈 종목의 현재가와 체결강도를 업데이트하고 시계열에 적재한다.
+
+    Returns:
+        추적한 종목 수
+    """
+    codes = get_tracking_codes()
+    if not codes:
+        return 0
+
+    # 현재가 + 체결강도 병렬 조회
+    def _fetch(code: str) -> tuple[str, dict | None, float | None]:
+        price_info = get_stock_price(code)
+        strength = get_trade_strength(code)
+        return code, price_info, strength
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(_fetch, codes))
+
+    ts_items: list[dict] = []
+    with _discovered_lock:
+        for code, price_info, strength in results:
+            state = _discovered.get(code)
+            if not state:
+                continue
+            if price_info:
+                state.current_price = price_info["current_price"]
+                state.change_rate = price_info["change_rate"]
+            if strength is not None:
+                state.trade_strength = strength
+
+            ts_items.append({
+                "stock_code": code,
+                "price": state.current_price,
+                "change_rate": state.change_rate,
+                "trade_strength": state.trade_strength,
+                "turnover_rate": state.turnover_rate,
+                "trading_value": state.trading_value,
+            })
+
+    if ts_items:
+        timeseries.record_batch(ts_items)
+
+    logger.debug("[추적] %d종목 업데이트 완료", len(ts_items))
+    return len(ts_items)
