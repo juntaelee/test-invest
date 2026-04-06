@@ -678,6 +678,18 @@
         </button>
     </div>
 
+    <!-- 개별 종목 점수 조회 -->
+    <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <input type="text" id="closing-stock-input" placeholder="종목코드 (예: 005930)"
+               maxlength="6" inputmode="numeric"
+               style="flex:1; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:8px 12px; color:#e6edf3; font-size:14px;">
+        <button onclick="scoreStock()" id="closing-score-btn"
+                style="background:#1f6feb; color:#fff; border:none; border-radius:6px; padding:8px 16px; cursor:pointer; font-size:13px; white-space:nowrap;">
+            점수 조회
+        </button>
+    </div>
+    <div id="closing-score-result" style="display:none; margin-bottom:12px;"></div>
+
     <div id="closing-screening-indicator" style="display:none; text-align:center; padding:20px; color:#f0883e;">
         스크리닝 중...
     </div>
@@ -1512,6 +1524,44 @@ function renderClosingCard(c) {
         + '</div>'
         + '</div>';
 }
+
+function scoreStock() {
+    var input = document.getElementById('closing-stock-input');
+    var code = input.value.trim();
+    if (!code || code.length !== 6) {
+        showToast('6자리 종목코드를 입력하세요', 'error');
+        return;
+    }
+    var btn = document.getElementById('closing-score-btn');
+    var resultEl = document.getElementById('closing-score-result');
+    btn.disabled = true;
+    btn.textContent = '조회 중...';
+    resultEl.style.display = 'none';
+
+    fetch('/api/closing-screener/score/' + code)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = '점수 조회';
+            if (!data.success) {
+                showToast(data.message, 'error');
+                return;
+            }
+            resultEl.style.display = 'block';
+            resultEl.innerHTML = renderClosingCard(data.candidate);
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = '점수 조회';
+            showToast('조회 실패', 'error');
+            console.error(err);
+        });
+}
+
+// Enter키로 조회
+document.getElementById('closing-stock-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') scoreStock();
+});
 </script>
 
 </body>

@@ -1,6 +1,7 @@
 """허브 라우터: 올인원 트레이딩 허브 페이지 + 발굴/시계열/자동매매 API."""
 
 import logging
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from auto_invest.core.trading import (
 from auto_invest.strategy.closing_screener import (
     is_screening,
     run_closing_screener,
+    score_single_stock,
 )
 from auto_invest.strategy.scanner import get_discovered_stocks, is_scanning, run_scanner2
 from auto_invest.utils import timeseries
@@ -221,6 +223,18 @@ def api_closing_screener_refresh():
     if report is None:
         return {"success": False, "message": "스크리너 실행 중"}
     return {"success": True, "count": len(report.candidates)}
+
+
+@router.get("/api/closing-screener/score/{stock_code}")
+def api_closing_screener_score(stock_code: str):
+    """단일 종목 종가배팅 점수 조회."""
+    name = lookup_stock_name(stock_code)
+    if not name:
+        return {"success": False, "message": "종목코드를 확인해주세요."}
+    candidate = score_single_stock(stock_code, name)
+    if not candidate:
+        return {"success": False, "message": "시세 조회 실패"}
+    return {"success": True, "candidate": asdict(candidate)}
 
 
 @router.get("/api/closing-screener/status")

@@ -378,3 +378,65 @@ def _run_screening_impl() -> ClosingReport:
     report.cached_at = cache.put(_CACHE_KEY, report.to_dict())
     logger.info("[종가배팅] 스크리닝 완료: %d종목 (40점↑)", len(results))
     return report
+
+
+def score_single_stock(stock_code: str, stock_name: str) -> ClosingCandidate | None:
+    """단일 종목의 종가배팅 점수를 계산한다."""
+    price_info = get_stock_price(stock_code)
+    if not price_info:
+        return None
+
+    current_price = price_info["current_price"]
+    open_price = price_info["open_price"]
+    high_price = price_info["high_price"]
+    low_price = price_info["low_price"]
+    change_rate = price_info["change_rate"]
+    volume = price_info.get("volume", 0)
+    volume_rate = price_info.get("volume_rate", 0.0)
+    trading_value = price_info.get("trading_value", 0)
+
+    strength = get_trade_strength(stock_code)
+    if strength is None:
+        strength = 0.0
+
+    investor = get_investor_trend(stock_code)
+    foreign_net = investor.get("foreign_net_qty", 0)
+    institution_net = investor.get("institution_net_qty", 0)
+
+    daily = get_daily_prices(stock_code, days=60)
+
+    s_volume = _score_volume_rate(volume_rate)
+    s_change = _score_change_rate(change_rate)
+    s_strength = _score_trade_strength(strength)
+    s_candle = _score_candle_quality(open_price, high_price, low_price, current_price)
+    s_ma, above_5, above_20, above_60 = _score_moving_averages(current_price, daily)
+    s_investor = _score_investor(foreign_net, institution_net)
+
+    total_score = s_volume + s_change + s_strength + s_candle + s_ma + s_investor
+
+    return ClosingCandidate(
+        stock_code=stock_code,
+        stock_name=stock_name,
+        score=round(total_score, 1),
+        grade=_assign_grade(total_score),
+        current_price=current_price,
+        open_price=open_price,
+        high_price=high_price,
+        low_price=low_price,
+        change_rate=change_rate,
+        volume=volume,
+        volume_rate=volume_rate,
+        trading_value=trading_value,
+        score_volume=s_volume,
+        score_change=s_change,
+        score_strength=s_strength,
+        score_candle=s_candle,
+        score_ma=s_ma,
+        score_investor=s_investor,
+        trade_strength=strength,
+        foreign_net=foreign_net,
+        institution_net=institution_net,
+        above_ma5=above_5,
+        above_ma20=above_20,
+        above_ma60=above_60,
+    )
