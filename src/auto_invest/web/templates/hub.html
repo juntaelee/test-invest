@@ -869,14 +869,12 @@ function renderDiscoverList() {
         html += '</div>';
         html += '</div>';
 
-        // 비율 매수 버튼 (active만)
-        if (s.status === 'active') {
-            html += '<div class="ratio-btns">';
-            [10, 30, 50, 70, 90].forEach(function(pct) {
-                html += '<button class="ratio-btn" onclick="ratioBuy(\'' + s.stock_code + '\',\'' + esc(s.stock_name) + '\',' + s.current_price + ',' + pct + ')">' + pct + '%</button>';
-            });
-            html += '</div>';
-        }
+        // 비율 매수 버튼 (모든 종목 수동 매수 가능)
+        html += '<div class="ratio-btns">';
+        [10, 30, 50, 70, 90].forEach(function(pct) {
+            html += '<button class="ratio-btn" onclick="ratioBuy(\'' + s.stock_code + '\',\'' + esc(s.stock_name) + '\',' + s.current_price + ',' + pct + ')">' + pct + '%</button>';
+        });
+        html += '</div>';
 
         html += '</div>';
     });
