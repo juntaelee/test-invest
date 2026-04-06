@@ -213,7 +213,7 @@ def _execute_auto_buy() -> None:
     config = get_auto_trade_config()
     strength_min = float(config.get("auto_buy_strength_min", "120"))
     change_max = float(config.get("auto_buy_change_max", "20"))
-    fixed_amount = int(config.get("auto_buy_fixed_amount", "0"))
+    fixed_amount = int(float(config.get("auto_buy_fixed_amount", "0")))
     tp_pct = float(config.get("auto_sell_tp", "5"))
     sl_pct = float(config.get("auto_sell_sl", "-5"))
 

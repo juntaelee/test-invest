@@ -497,7 +497,7 @@ def toggle_auto_buy(enabled: bool, buying_power: int = 0) -> dict:
     config = get_auto_trade_config()
 
     if enabled:
-        ratio = int(config.get("auto_buy_ratio", "30"))
+        ratio = int(float(config.get("auto_buy_ratio", "30")))
         fixed_amount = int(buying_power * ratio / 100)
         set_auto_trade_config("auto_buy_enabled", "true")
         set_auto_trade_config("auto_buy_fixed_amount", str(fixed_amount))
