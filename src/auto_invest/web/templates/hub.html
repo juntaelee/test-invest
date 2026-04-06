@@ -698,6 +698,12 @@ function switchTab(tab) {
     document.querySelectorAll('.tab-content').forEach(function(c) {
         c.classList.toggle('active', c.id === 'tab-' + tab);
     });
+    if (tab === 'discover') {
+        // 탭 전환 후 SVG 크기가 정상 반영되도록 스파크라인 재렌더
+        setTimeout(function() {
+            state.stocks.forEach(function(s) { renderSparkline(s.stock_code); });
+        }, 50);
+    }
     if (tab === 'holdings') loadHoldings();
     if (tab === 'settings') loadConfig();
 }
