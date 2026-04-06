@@ -1456,8 +1456,9 @@ function renderClosingCard(c) {
 
     function indicatorBar(label, score, max) {
         var pct = Math.min(score / max * 100, 100);
+        var s = parseFloat(score.toFixed(1));
         return '<div><div style="display:flex;justify-content:space-between;">'
-            + '<span>' + label + '</span><span style="color:#e6edf3;">' + score + '/' + max + '</span></div>'
+            + '<span>' + label + '</span><span style="color:#e6edf3;">' + s + '/' + max + '</span></div>'
             + '<div class="closing-indicator-bar"><div class="closing-indicator-fill" style="width:' + pct + '%"></div></div></div>';
     }
 
@@ -1477,7 +1478,7 @@ function renderClosingCard(c) {
         + '    <span class="closing-grade ' + gradeClass + '" style="margin-left:8px;">' + gradeText + '</span>'
         + '  </div>'
         + '  <div style="text-align:right;">'
-        + '    <span class="closing-score ' + scoreClass + '">' + c.score + '</span>'
+        + '    <span class="closing-score ' + scoreClass + '">' + parseFloat(c.score.toFixed(1)) + '</span>'
         + '    <span style="color:#8b949e;font-size:12px;">점</span>'
         + '  </div>'
         + '</div>'
