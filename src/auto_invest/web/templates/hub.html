@@ -297,6 +297,39 @@
             cursor: pointer;
         }
         .tpsl-save:hover { background: #484f58; }
+        .tpsl-remove {
+            background: transparent;
+            color: #f85149;
+            border: 1px solid #f8514930;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+        .tpsl-remove:hover { background: #f8514920; }
+        .holdings-loading {
+            text-align: center;
+            color: #8b949e;
+            padding: 12px;
+            font-size: 13px;
+        }
+        .refresh-btn {
+            background: #30363d;
+            color: #c9d1d9;
+            border: 1px solid #484f58;
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .refresh-btn:hover { background: #484f58; }
+        .refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .holdings-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            padding: 0 0 8px 0;
+        }
 
         /* ── 설정 탭 ── */
         .settings-section {
@@ -549,6 +582,7 @@
                 </label>
                 <span class="countdown" id="refresh-countdown"></span>
             </div>
+            <button class="refresh-btn" id="discover-refresh-btn" onclick="forceRefreshDiscover()">새로고침</button>
         </div>
     </div>
     <div id="discover-list">
@@ -560,6 +594,9 @@
 
 <!-- 보유 종목 탭 -->
 <div class="tab-content" id="tab-holdings">
+    <div class="holdings-toolbar">
+        <button class="refresh-btn" id="holdings-refresh-btn" onclick="forceRefreshHoldings()">새로고침</button>
+    </div>
     <div id="holdings-list">
         <div class="skeleton"></div>
         <div class="skeleton"></div>
@@ -691,6 +728,15 @@ function loadHubData() {
         }).map(function(s) { return s.stock_code; });
         loadTimeseries(trackCodes);
     })
+    .then(function() {
+        // 자동매수 토글 상태를 항상 최신으로 동기화
+        return fetch('/api/auto-trade/config');
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        state.config = data.config || state.config;
+        syncAutoBuyToggle(state.config);
+    })
     .catch(function(e) { console.error('hub-data 로드 실패:', e); });
 }
 
@@ -704,12 +750,25 @@ function loadBuyingPower() {
 }
 
 function loadHoldings() {
+    var list = document.getElementById('holdings-list');
+    list.innerHTML = '<div class="holdings-loading">보유종목 불러오는 중...</div>';
     fetch('/api/holdings')
     .then(function(r) { return r.json(); })
     .then(function(data) {
         state.holdings = data.holdings || [];
         renderHoldingsList();
+    })
+    .catch(function(e) {
+        list.innerHTML = '<div class="holdings-loading">보유종목 로드 실패</div>';
+        console.error('holdings 로드 실패:', e);
     });
+}
+
+function syncAutoBuyToggle(config) {
+    var enabled = config.auto_buy_enabled === 'true';
+    document.getElementById('auto-buy-toggle').checked = enabled;
+    var fixedAmt = parseInt(config.auto_buy_fixed_amount || '0');
+    document.getElementById('auto-buy-amount').textContent = enabled ? '1회 ' + num(fixedAmt) + '원' : '';
 }
 
 function loadConfig() {
@@ -722,11 +781,9 @@ function loadConfig() {
         document.getElementById('cfg-buy-ratio').value = state.config.auto_buy_ratio || 30;
         document.getElementById('cfg-tp').value = state.config.auto_sell_tp || 5;
         document.getElementById('cfg-sl').value = state.config.auto_sell_sl || -5;
-        var enabled = state.config.auto_buy_enabled === 'true';
-        document.getElementById('auto-buy-toggle').checked = enabled;
-        var fixedAmt = parseInt(state.config.auto_buy_fixed_amount || '0');
-        document.getElementById('auto-buy-amount').textContent = enabled ? '1회 ' + num(fixedAmt) + '원' : '';
-    });
+        syncAutoBuyToggle(state.config);
+    })
+    .catch(function(e) { console.error('설정 로드 실패:', e); });
 }
 
 function loadTimeseries(codes) {
@@ -858,6 +915,9 @@ function renderHoldingsList() {
         html += '<span class="metric-label" style="margin-left:8px">SL</span>';
         html += '<input type="number" class="tpsl-input" id="sl-' + h.stock_code + '" value="' + slVal + '" step="0.5">%';
         html += '<button class="tpsl-save" onclick="saveTpSl(\'' + h.stock_code + '\')">저장</button>';
+        if (h.tp_pct != null || h.sl_pct != null) {
+            html += '<button class="tpsl-remove" onclick="removeTpSl(\'' + h.stock_code + '\',\'' + esc(h.stock_name) + '\')">제거</button>';
+        }
         html += '</div>';
 
         // 비율 매도 버튼
@@ -1046,6 +1106,22 @@ function saveTpSl(code) {
     });
 }
 
+// ── 액션: TP/SL 제거 ──
+function removeTpSl(code, name) {
+    if (!confirm((name || code) + ' TP/SL을 제거하시겠습니까?')) return;
+    fetch('/api/position/' + code, { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            showToast('TP/SL 제거 완료', 'success');
+            loadHoldings();
+        } else {
+            showToast(data.message, 'error');
+        }
+    })
+    .catch(function(e) { showToast('TP/SL 제거 오류: ' + e, 'error'); });
+}
+
 // ── 자동매수 토글 ──
 function toggleAutoBuy(enabled) {
     fetch('/api/auto-trade/toggle', {
@@ -1106,6 +1182,31 @@ function toggleFilter(type) {
         document.getElementById('filter-hide-departed').classList.toggle('active', state.hideDeparted);
     }
     renderDiscoverList();
+}
+
+// ── 강제 새로고침 ──
+function forceRefreshDiscover() {
+    var btn = document.getElementById('discover-refresh-btn');
+    btn.disabled = true;
+    btn.textContent = '갱신 중...';
+    loadHubData();
+    loadBuyingPower();
+    setTimeout(function() {
+        btn.disabled = false;
+        btn.textContent = '새로고침';
+    }, 2000);
+}
+
+function forceRefreshHoldings() {
+    var btn = document.getElementById('holdings-refresh-btn');
+    btn.disabled = true;
+    btn.textContent = '갱신 중...';
+    loadHoldings();
+    loadBuyingPower();
+    setTimeout(function() {
+        btn.disabled = false;
+        btn.textContent = '새로고침';
+    }, 2000);
 }
 
 // ── 자동 새로고침 ──
