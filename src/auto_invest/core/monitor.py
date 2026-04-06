@@ -352,6 +352,10 @@ def start_scheduler(stop_event: threading.Event) -> None:
         "시간외 08:30, 장개시 09:00, 장종료 15:30)"
     )
 
+    # 서버 시작 시 장중이면 즉시 1회 스캔 (3분 대기 방지)
+    if is_market_open():
+        auto_scan()
+
     while not stop_event.is_set():
         schedule.run_pending()
         stop_event.wait(timeout=1)
