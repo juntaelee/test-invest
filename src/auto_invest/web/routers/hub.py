@@ -17,6 +17,10 @@ from auto_invest.core.trading import (
     toggle_auto_buy,
     update_auto_trade_config,
 )
+from auto_invest.strategy.closing_screener import (
+    is_screening,
+    run_closing_screener,
+)
 from auto_invest.strategy.scanner import get_discovered_stocks, is_scanning, run_scanner2
 from auto_invest.utils import timeseries
 
@@ -187,3 +191,39 @@ def api_toggle_auto_trade(req: AutoTradeToggle):
         buying_power = get_buying_power()
     result = toggle_auto_buy(enabled=req.enabled, buying_power=buying_power)
     return {"success": True, **result}
+
+
+# ── 종가배팅 스크리너 API ────────────────────────────────
+
+
+@router.get("/api/closing-screener/data")
+def api_closing_screener_data():
+    """종가배팅 스크리닝 결과 조회."""
+    report = run_closing_screener()
+    if report is None:
+        return {"empty": True, "candidates": [], "timestamp": "", "total_scanned": 0}
+
+    cached_at_str = ""
+    if report.cached_at:
+        cached_at_str = datetime.fromtimestamp(report.cached_at, tz=KST).strftime(
+            "%Y-%m-%d %H:%M:%S KST"
+        )
+
+    result = report.to_dict()
+    result["cached_at"] = cached_at_str
+    return result
+
+
+@router.post("/api/closing-screener/refresh")
+def api_closing_screener_refresh():
+    """종가배팅 스크리너 수동 실행."""
+    report = run_closing_screener(force_refresh=True)
+    if report is None:
+        return {"success": False, "message": "스크리너 실행 중"}
+    return {"success": True, "count": len(report.candidates)}
+
+
+@router.get("/api/closing-screener/status")
+def api_closing_screener_status():
+    """종가배팅 스크리너 실행 상태."""
+    return {"screening": is_screening()}

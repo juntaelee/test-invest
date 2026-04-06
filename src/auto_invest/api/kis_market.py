@@ -367,6 +367,9 @@ def get_stock_price(stock_code: str) -> dict | None:
             "change_amount": int(output.get("prdy_vrss", "0")),
             "prev_close": int(output.get("stck_sdpr", "0")),
             "volume": int(output.get("acml_vol", "0")),
+            "open_price": int(output.get("stck_oprc", "0")),
+            "high_price": int(output.get("stck_hgpr", "0")),
+            "low_price": int(output.get("stck_lwpr", "0")),
         }
     except Exception:
         logger.exception("현재가 조회 중 오류 (종목: %s)", stock_code)
@@ -409,3 +412,56 @@ def lookup_stock_name(code: str) -> str | None:
         logger.warning("종목명 조회 실패: %s", code, exc_info=True)
 
     return None
+
+
+# ── 일별 시세 조회 ──────────────────────────────────────
+
+
+def get_daily_prices(stock_code: str, days: int = 60) -> list[dict]:
+    """종목의 최근 N일 일별 시세를 조회한다.
+
+    Returns:
+        [{"date": "20260406", "close": 50000, "volume": 123456}, ...]
+        최신 날짜가 먼저 온다. 실패 시 빈 리스트.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    kst = timezone(timedelta(hours=9))
+    end_date = datetime.now(kst).strftime("%Y%m%d")
+    start_date = (datetime.now(kst) - timedelta(days=days + 30)).strftime("%Y%m%d")
+
+    url = f"{settings.base_url}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice"
+    headers = auth.get_headers(tr_id="FHKST03010100")
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": stock_code,
+        "FID_INPUT_DATE_1": start_date,
+        "FID_INPUT_DATE_2": end_date,
+        "FID_PERIOD_DIV_CODE": "D",
+        "FID_ORG_ADJ_PRC": "0",
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, params=params, timeout=_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("rt_cd") != "0":
+            logger.warning("일별 시세 조회 실패 [%s]: %s", stock_code, data.get("msg1"))
+            return []
+
+        items = data.get("output2", [])
+        results = []
+        for item in items[:days]:
+            close_price = int(item.get("stck_clpr", "0"))
+            if close_price <= 0:
+                continue
+            results.append({
+                "date": item.get("stck_bsop_date", ""),
+                "close": close_price,
+                "volume": int(item.get("acml_vol", "0")),
+            })
+        return results
+
+    except requests.RequestException as e:
+        logger.error("일별 시세 조회 실패 [%s]: %s", stock_code, e)
+        return []

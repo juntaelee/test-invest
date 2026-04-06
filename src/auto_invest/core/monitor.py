@@ -25,6 +25,7 @@ from auto_invest.core.trading import (
     is_auto_buy_enabled,
     set_auto_trade_config,
 )
+from auto_invest.strategy.closing_screener import run_closing_screener
 from auto_invest.strategy.scanner import (
     clear_discovered,
     get_discovered_stocks,
@@ -308,6 +309,37 @@ def check_day_init() -> None:
     logger.info("[장시작] 전일 데이터 클리어 완료")
 
 
+# ── 종가배팅 스크리닝 ────────────────────────────────────
+
+_closing_screen_done_date: str = ""
+
+
+def check_closing_screener() -> None:
+    """15:20 KST에 종가배팅 스크리닝을 1회 실행한다."""
+    global _closing_screen_done_date  # noqa: PLW0603
+
+    now = datetime.now(tz=KST)
+    today = now.strftime("%Y-%m-%d")
+
+    if _closing_screen_done_date == today:
+        return
+    if now.weekday() >= 5:
+        return
+
+    target = now.replace(hour=15, minute=20, second=0, microsecond=0)
+    if now < target:
+        return
+
+    _closing_screen_done_date = today
+    logger.info("[종가배팅] 15:20 자동 스크리닝 시작")
+    try:
+        report = run_closing_screener(force_refresh=True)
+        if report:
+            logger.info("[종가배팅] 스크리닝 완료: %d종목", len(report.candidates))
+    except Exception:
+        logger.warning("[종가배팅] 스크리닝 실패", exc_info=True)
+
+
 def check_day_close() -> None:
     """장 종료 시 (15:30) 자동매수 OFF."""
     global _day_close_done_date  # noqa: PLW0603
@@ -343,13 +375,15 @@ def start_scheduler(stop_event: threading.Event) -> None:
     # 예약 처리
     schedule.every(10).seconds.do(check_pre_market_reservations)
     schedule.every(10).seconds.do(check_market_open_reservations)
+    # 종가배팅 스크리닝 (15:20 1회)
+    schedule.every(30).seconds.do(check_closing_screener)
     # 장 시작/종료
     schedule.every(30).seconds.do(check_day_init)
     schedule.every(30).seconds.do(check_day_close)
 
     logger.info(
         "스케줄러 시작 (TP/SL 1분, 스캔 3분, 추적 30초, "
-        "시간외 08:30, 장개시 09:00, 장종료 15:30)"
+        "시간외 08:30, 장개시 09:00, 종가배팅 15:20, 장종료 15:30)"
     )
 
     # 서버 시작 시 장중이면 즉시 1회 스캔 (3분 대기 방지)

@@ -534,6 +534,67 @@
             text-align: center;
         }
         .countdown.active { color: #58a6ff; }
+        /* ── 종가배팅 카드 ── */
+        .closing-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+        }
+        .closing-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .closing-score {
+            font-size: 24px;
+            font-weight: 700;
+        }
+        .closing-score.high { color: #f85149; }
+        .closing-score.mid { color: #f0883e; }
+        .closing-score.low { color: #8b949e; }
+        .closing-grade {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+        .closing-grade.strong { background: #f8514922; color: #f85149; }
+        .closing-grade.good { background: #f0883e22; color: #f0883e; }
+        .closing-grade.watch { background: #8b949e22; color: #8b949e; }
+        .closing-indicators {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            font-size: 12px;
+            color: #8b949e;
+        }
+        .closing-indicator-bar {
+            background: #21262d;
+            border-radius: 3px;
+            height: 4px;
+            margin-top: 2px;
+        }
+        .closing-indicator-fill {
+            height: 100%;
+            border-radius: 3px;
+            background: #238636;
+        }
+        .closing-ma-badges {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+        .closing-ma-badge {
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+        }
+        .closing-ma-badge.above { border-color: #238636; color: #3fb950; }
+        .closing-ma-badge.below { color: #484f58; }
     </style>
 </head>
 <body>
@@ -558,6 +619,7 @@
 <div class="tab-bar">
     <button class="tab-btn active" data-tab="discover" onclick="switchTab('discover')">발굴 종목</button>
     <button class="tab-btn" data-tab="holdings" onclick="switchTab('holdings')">보유 종목</button>
+    <button class="tab-btn" data-tab="closing" onclick="switchTab('closing')">종가배팅</button>
     <button class="tab-btn" data-tab="settings" onclick="switchTab('settings')">설정</button>
 </div>
 </div><!-- /fixed-header -->
@@ -601,6 +663,31 @@
         <div class="skeleton"></div>
         <div class="skeleton"></div>
     </div>
+</div>
+
+<!-- 종가배팅 탭 -->
+<div class="tab-content" id="tab-closing">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <div>
+            <span id="closing-timestamp" style="color:#8b949e; font-size:13px;"></span>
+            <span id="closing-count" style="color:#8b949e; font-size:13px; margin-left:8px;"></span>
+        </div>
+        <button onclick="refreshClosingScreener()" id="closing-refresh-btn"
+                style="background:#238636; color:#fff; border:none; border-radius:6px; padding:6px 14px; cursor:pointer; font-size:13px;">
+            스크리닝 실행
+        </button>
+    </div>
+
+    <div id="closing-screening-indicator" style="display:none; text-align:center; padding:20px; color:#f0883e;">
+        스크리닝 중...
+    </div>
+
+    <div id="closing-empty" style="display:none; text-align:center; padding:40px; color:#8b949e;">
+        스크리닝 결과가 없습니다.<br>
+        <span style="font-size:13px;">15:20에 자동 스크리닝되거나, 위 버튼으로 수동 실행하세요.</span>
+    </div>
+
+    <div id="closing-list"></div>
 </div>
 
 <!-- 설정 탭 -->
@@ -705,6 +792,7 @@ function switchTab(tab) {
         }, 50);
     }
     if (tab === 'holdings') loadHoldings();
+    if (tab === 'closing') loadClosingData();
     if (tab === 'settings') loadConfig();
 }
 
@@ -835,7 +923,7 @@ function renderDiscoverList() {
 
         html += '<div class="stock-card ' + cls + '" id="card-' + s.stock_code + '">';
         html += '<div class="card-header">';
-        html += '<div class="card-name">' + s.stock_name;
+        html += '<div class="card-name"><a href="https://finance.naver.com/item/main.naver?code=' + s.stock_code + '" target="_blank" style="color:inherit;text-decoration:none;" onclick="event.stopPropagation()">' + s.stock_name + '</a>';
         if (s.status === 'departed') html += ' <span class="badge badge-departed">이탈</span>';
         if (s.status === 'excluded') html += ' <span class="badge badge-excluded">제외:등락' + s.change_rate.toFixed(0) + '%</span>';
         html += '</div>';
@@ -899,7 +987,7 @@ function renderHoldingsList() {
 
         html += '<div class="holding-card">';
         html += '<div class="card-header">';
-        html += '<div class="card-name">' + h.stock_name + '</div>';
+        html += '<div class="card-name"><a href="https://finance.naver.com/item/main.naver?code=' + h.stock_code + '" target="_blank" style="color:inherit;text-decoration:none;">' + h.stock_name + '</a></div>';
         html += '<div class="holding-profit ' + profitClass + '">' + sign + h.profit_rate.toFixed(2) + '%</div>';
         html += '</div>';
 
@@ -1295,6 +1383,134 @@ loadConfig();
 setInterval(function() {
     loadBuyingPower();
 }, 60000);
+
+// ── 종가배팅 ──────────────────────────────────────────
+
+function loadClosingData() {
+    fetch('/api/closing-screener/data')
+        .then(function(r) { return r.json(); })
+        .then(function(data) { renderClosingList(data); })
+        .catch(function(err) { console.error('종가배팅 데이터 로드 실패:', err); });
+}
+
+function refreshClosingScreener() {
+    var btn = document.getElementById('closing-refresh-btn');
+    btn.disabled = true;
+    btn.textContent = '스크리닝 중...';
+    document.getElementById('closing-screening-indicator').style.display = 'block';
+
+    fetch('/api/closing-screener/refresh', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            btn.textContent = '스크리닝 실행';
+            document.getElementById('closing-screening-indicator').style.display = 'none';
+            if (data.success) { loadClosingData(); }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            btn.textContent = '스크리닝 실행';
+            document.getElementById('closing-screening-indicator').style.display = 'none';
+            console.error('스크리닝 실패:', err);
+        });
+}
+
+function renderClosingList(data) {
+    var listEl = document.getElementById('closing-list');
+    var emptyEl = document.getElementById('closing-empty');
+    var tsEl = document.getElementById('closing-timestamp');
+    var countEl = document.getElementById('closing-count');
+
+    if (data.cached_at) {
+        tsEl.textContent = '스캔: ' + data.cached_at;
+    } else if (data.timestamp) {
+        tsEl.textContent = data.timestamp;
+    }
+
+    var candidates = data.candidates || [];
+    countEl.textContent = candidates.length > 0 ? candidates.length + '종목' : '';
+
+    if (!candidates.length) {
+        emptyEl.style.display = 'block';
+        listEl.innerHTML = '';
+        return;
+    }
+    emptyEl.style.display = 'none';
+
+    var html = '';
+    for (var i = 0; i < candidates.length; i++) {
+        html += renderClosingCard(candidates[i]);
+    }
+    listEl.innerHTML = html;
+}
+
+function renderClosingCard(c) {
+    var scoreClass = c.score >= 80 ? 'high' : c.score >= 60 ? 'mid' : 'low';
+    var gradeClass = c.grade === '강력추천' ? 'strong' : c.grade === '추천' ? 'good' : 'watch';
+    var gradeText = c.grade || '-';
+
+    var changeColor = c.change_rate >= 0 ? '#f85149' : '#58a6ff';
+    var changeSign = c.change_rate >= 0 ? '+' : '';
+
+    var tvBillion = (c.trading_value / 100000000).toFixed(0);
+
+    function indicatorBar(label, score, max) {
+        var pct = Math.min(score / max * 100, 100);
+        return '<div><div style="display:flex;justify-content:space-between;">'
+            + '<span>' + label + '</span><span style="color:#e6edf3;">' + score + '/' + max + '</span></div>'
+            + '<div class="closing-indicator-bar"><div class="closing-indicator-fill" style="width:' + pct + '%"></div></div></div>';
+    }
+
+    var maBadges = ''
+        + '<span class="closing-ma-badge ' + (c.above_ma5 ? 'above' : 'below') + '">5일</span>'
+        + '<span class="closing-ma-badge ' + (c.above_ma20 ? 'above' : 'below') + '">20일</span>'
+        + '<span class="closing-ma-badge ' + (c.above_ma60 ? 'above' : 'below') + '">60일</span>';
+
+    var fSign = c.foreign_net >= 0 ? '+' : '';
+    var iSign = c.institution_net >= 0 ? '+' : '';
+
+    return '<div class="closing-card">'
+        + '<div class="closing-card-header">'
+        + '  <div>'
+        + '    <a href="https://finance.naver.com/item/main.naver?code=' + c.stock_code + '" target="_blank" style="font-size:15px;font-weight:600;color:#e6edf3;text-decoration:none;">' + c.stock_name + '</a>'
+        + '    <span style="color:#8b949e;font-size:12px;margin-left:6px;">' + c.stock_code + '</span>'
+        + '    <span class="closing-grade ' + gradeClass + '" style="margin-left:8px;">' + gradeText + '</span>'
+        + '  </div>'
+        + '  <div style="text-align:right;">'
+        + '    <span class="closing-score ' + scoreClass + '">' + c.score + '</span>'
+        + '    <span style="color:#8b949e;font-size:12px;">점</span>'
+        + '  </div>'
+        + '</div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:13px;">'
+        + '  <div>'
+        + '    <span style="color:#e6edf3;font-weight:600;">' + num(c.current_price) + '원</span>'
+        + '    <span style="color:' + changeColor + ';margin-left:6px;">' + changeSign + c.change_rate.toFixed(2) + '%</span>'
+        + '  </div>'
+        + '  <div style="color:#8b949e;">'
+        + '    거래량 ' + c.volume_rate.toFixed(0) + '% · 거래대금 ' + tvBillion + '억'
+        + '    · 체결강도 ' + c.trade_strength.toFixed(0) + '%'
+        + '  </div>'
+        + '</div>'
+        + '<div class="closing-indicators">'
+        + indicatorBar('거래량', c.score_volume, 25)
+        + indicatorBar('등락률', c.score_change, 20)
+        + indicatorBar('체결강도', c.score_strength, 15)
+        + indicatorBar('양봉', c.score_candle, 15)
+        + indicatorBar('이평선', c.score_ma, 15)
+        + indicatorBar('수급', c.score_investor, 10)
+        + '</div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">'
+        + '  <div class="closing-ma-badges">' + maBadges + '</div>'
+        + '  <div style="font-size:11px;color:#8b949e;">외인 ' + fSign + num(c.foreign_net) + ' · 기관 ' + iSign + num(c.institution_net) + '</div>'
+        + '</div>'
+        + '<div style="text-align:right;margin-top:8px;">'
+        + '  <button onclick="ratioBuy(\'' + c.stock_code + '\', \'' + c.stock_name + '\', ' + c.current_price + ', 10)"'
+        + '    style="background:#238636;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12px;">10% 매수</button>'
+        + '  <button onclick="ratioBuy(\'' + c.stock_code + '\', \'' + c.stock_name + '\', ' + c.current_price + ', 30)"'
+        + '    style="background:#1f6feb;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:12px;margin-left:6px;">30% 매수</button>'
+        + '</div>'
+        + '</div>';
+}
 </script>
 
 </body>
