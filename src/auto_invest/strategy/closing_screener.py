@@ -269,11 +269,13 @@ def run_closing_screener(force_refresh: bool = False) -> ClosingReport | None:
 def _run_screening_impl() -> ClosingReport:
     """스크리닝 본체."""
     # 1차: 거래량 순위 100개 조회
-    volume_data = get_volume_rank(max_items=100)
+    volume_data = get_volume_rank(max_items=110)
 
     # 1차 필터링
     candidates: list[dict] = []
     for item in volume_data:
+        if "ETF" in item["stock_name"].upper():
+            continue
         if item["volume_rate"] < MIN_VOLUME_RATE:
             continue
         if item["trading_value"] < MIN_TRADING_VALUE:

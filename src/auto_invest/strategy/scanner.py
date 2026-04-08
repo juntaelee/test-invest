@@ -263,7 +263,7 @@ def _run_scan_impl() -> DiscoverReport:
     """스캔 본체: 거래량 30 + 회전율 70 → 필터 → 체결강도 → 발굴 목록 갱신."""
     # 1. 거래량 순위 30개 + 회전율 순위 70개 병렬 조회
     with ThreadPoolExecutor(max_workers=2) as pool:
-        f_volume = pool.submit(get_volume_rank, max_items=30)
+        f_volume = pool.submit(get_volume_rank, max_items=40)
         f_turnover = pool.submit(get_turnover_rank, max_items=70)
     volume_data = f_volume.result()
     turnover_data = f_turnover.result()
@@ -292,6 +292,8 @@ def _run_scan_impl() -> DiscoverReport:
 
     for code, info in stock_info.items():
         if _is_large_cap(code):
+            continue
+        if "ETF" in info["name"].upper():
             continue
         if info["current_price"] < MIN_PRICE:
             continue
