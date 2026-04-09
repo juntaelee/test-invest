@@ -293,8 +293,6 @@ def _run_scan_impl() -> DiscoverReport:
     for code, info in stock_info.items():
         if _is_large_cap(code):
             continue
-        if "ETF" in info["name"].upper():
-            continue
         if info["current_price"] < MIN_PRICE:
             continue
         if info["change_rate"] >= MAX_CHANGE_RATE:

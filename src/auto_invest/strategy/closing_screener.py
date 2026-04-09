@@ -274,8 +274,6 @@ def _run_screening_impl() -> ClosingReport:
     # 1차 필터링
     candidates: list[dict] = []
     for item in volume_data:
-        if "ETF" in item["stock_name"].upper():
-            continue
         if item["volume_rate"] < MIN_VOLUME_RATE:
             continue
         if item["trading_value"] < MIN_TRADING_VALUE:

@@ -86,7 +86,7 @@ def _volume_rank_common(
         "FID_DIV_CLS_CODE": market_code,
         "FID_BLNG_CLS_CODE": blng_cls_code,
         "FID_TRGT_CLS_CODE": "",
-        "FID_TRGT_EXLS_CLS_CODE": "",
+        "FID_TRGT_EXLS_CLS_CODE": "0000100",  # ETF 제외
         "FID_INPUT_PRICE_1": "0",
         "FID_INPUT_PRICE_2": "0",
         "FID_VOL_CNT": "0",
@@ -196,7 +196,7 @@ def get_after_hour_balance_rank(
         "FID_DIV_CLS_CODE": market_code,
         "FID_BLNG_CLS_CODE": "0",
         "FID_TRGT_CLS_CODE": "",
-        "FID_TRGT_EXLS_CLS_CODE": "",
+        "FID_TRGT_EXLS_CLS_CODE": "0000100",  # ETF 제외
         "FID_INPUT_PRICE_1": "0",
         "FID_INPUT_PRICE_2": "0",
         "FID_VOL_CNT": "0",
@@ -241,7 +241,7 @@ def get_overtime_volume_rank(
         "FID_DIV_CLS_CODE": market_code,
         "FID_BLNG_CLS_CODE": "0",
         "FID_TRGT_CLS_CODE": "",
-        "FID_TRGT_EXLS_CLS_CODE": "",
+        "FID_TRGT_EXLS_CLS_CODE": "0000100",  # ETF 제외
         "FID_INPUT_PRICE_1": "0",
         "FID_INPUT_PRICE_2": "0",
         "FID_VOL_CNT": "0",
@@ -286,7 +286,7 @@ def get_fluctuation_rank(
         "FID_DIV_CLS_CODE": market_code,
         "FID_BLNG_CLS_CODE": "0",
         "FID_TRGT_CLS_CODE": "",
-        "FID_TRGT_EXLS_CLS_CODE": "",
+        "FID_TRGT_EXLS_CLS_CODE": "0000100",  # ETF 제외
         "FID_INPUT_PRICE_1": "0",
         "FID_INPUT_PRICE_2": "0",
         "FID_VOL_CNT": "0",
