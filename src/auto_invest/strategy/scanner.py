@@ -20,7 +20,7 @@ from auto_invest.api.kis_market import (
     get_stock_price,
     get_trade_strength,
     get_turnover_rank,
-    get_volume_rank,
+    get_volume_surge_rank,
 )
 from auto_invest.utils import cache, timeseries
 
@@ -260,10 +260,10 @@ def run_scanner2(
 
 
 def _run_scan_impl() -> DiscoverReport:
-    """스캔 본체: 거래량 30 + 회전율 70 → 필터 → 체결강도 → 발굴 목록 갱신."""
-    # 1. 거래량 순위 30개 + 회전율 순위 70개 병렬 조회
+    """스캔 본체: 거래량급증률 40 + 회전율 70 → 필터 → 체결강도 → 발굴 목록 갱신."""
+    # 1. 거래량 급증률 순위 40개 + 회전율 순위 70개 병렬 조회
     with ThreadPoolExecutor(max_workers=2) as pool:
-        f_volume = pool.submit(get_volume_rank, max_items=40)
+        f_volume = pool.submit(get_volume_surge_rank, max_items=40)
         f_turnover = pool.submit(get_turnover_rank, max_items=70)
     volume_data = f_volume.result()
     turnover_data = f_turnover.result()

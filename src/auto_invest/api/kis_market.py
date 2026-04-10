@@ -139,6 +139,14 @@ def get_volume_rank(
     return _volume_rank_common("0", market, max_items)
 
 
+def get_volume_surge_rank(
+    market: str = "ALL",
+    max_items: int = 30,
+) -> list[dict]:
+    """거래량 급증률 순위 조회 (전일 동시간 대비 거래증가율 기준)."""
+    return _volume_rank_common("1", market, max_items)
+
+
 def get_trading_value_rank(
     market: str = "ALL",
     max_items: int = 30,
