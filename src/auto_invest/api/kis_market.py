@@ -47,6 +47,25 @@ def _get_data(
         return []
 
 
+# ETF 브랜드 접두어 (한국 ETF 종목명은 항상 브랜드명으로 시작)
+_ETF_PREFIXES = (
+    "KODEX", "TIGER", "ARIRANG", "KBSTAR", "SOL", "ACE",
+    "RISE", "PLUS", "HANARO", "KOSEF", "BNK", "TIMEFOLIO",
+    "FOCUS", "WOORI", "TREX",
+)
+
+
+def _is_etf(name: str) -> bool:
+    """ETF 종목 여부 판별 (브랜드 접두어 + 'ETF' 포함 체크)."""
+    upper = name.upper()
+    if "ETF" in upper or "ETN" in upper:
+        return True
+    for prefix in _ETF_PREFIXES:
+        if upper.startswith(prefix):
+            return True
+    return False
+
+
 def _filter_stocks(raw: list[dict]) -> list[dict]:
     """ETF/ETN 제외, 6자리 숫자 종목코드만 반환."""
     filtered = []
@@ -58,6 +77,8 @@ def _filter_stocks(raw: list[dict]) -> list[dict]:
         if not code or not name:
             continue
         if len(code) != 6 or not code.isdigit():
+            continue
+        if _is_etf(name):
             continue
         item["_code"] = code
         item["_name"] = name
